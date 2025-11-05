@@ -1,16 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "stainx"
 version = "0.1.0"
 description = "GPU-accelerated stain normalization"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "torch>=2.0.0",
 ]
 authors = [
     { name = "Yimin Zheng", email = "yzheng@cemm.oeaw.ac.at"}
 ]
-classifier = [
+classifiers = [
     "Environment :: GPU :: NVIDIA CUDA",
     "Intended Audience :: Developers",
     "Intended Audience :: Healthcare Industry",
@@ -19,19 +23,40 @@ classifier = [
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering",
     "Topic :: Software Development",
-
 ]
 
+
 [tool.uv.workspace]
-members = ["packages/stainx-cuda", "packages/stainx-mkl"]
+members = ["packages/stainx-cuda"]
 
 [tool.uv.sources]
 stainx-cuda = { workspace = true }
-stainx-mkl = { workspace = true }
 
 [dependency-groups]
 dev = [
     "ipykernel>=7.0.1",
     "mkdocs>=1.6.1",
     "taskipy>=1.14.1",
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-xdist>=3.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=src/stainx",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "gpu: marks tests that require GPU",
+    "cuda: marks tests that require CUDA",
 ]

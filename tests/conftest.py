@@ -1,0 +1,47 @@
+# Copyright (C) Rendeiro Group, CeMM Research Center for Molecular Medicine of the Austrian Academy of Sciences
+# All rights reserved.
+#
+# This software is distributed under the terms of the GNU General Public License v3 (GPLv3).
+# See the LICENSE file for details.
+
+"""
+Simplified pytest configuration and fixtures for stainx tests.
+"""
+
+import pytest
+import torch
+
+
+@pytest.fixture
+def sample_images():
+    """Create sample histopathology images for testing."""
+    return torch.rand(4, 3, 256, 256)
+
+
+@pytest.fixture
+def reference_images():
+    """Create reference images for normalization."""
+    return torch.rand(2, 3, 256, 256)
+
+
+@pytest.fixture
+def single_image():
+    """Create a single image for transform testing."""
+    return torch.rand(3, 256, 256)
+
+
+@pytest.fixture
+def device():
+    """Get the appropriate device for testing."""
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        return torch.device("mps")
+    else:
+        return torch.device("cpu")
+
+
+@pytest.fixture
+def temp_dir(tmp_path):
+    """Create a temporary directory for testing file operations."""
+    return tmp_path
