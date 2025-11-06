@@ -6,10 +6,10 @@
 .PHONY: build clean test install install-dev help
 
 # Variables
-PYTHON := python
-UV := uv
-PIP := pip
-PYTEST := pytest
+PYTHON := $(UV) run python
+UV := $(shell PATH="$(HOME)/.local/bin:$$PATH" command -v uv 2>/dev/null || echo "$(HOME)/.local/bin/uv")
+PIP := $(UV) run pip
+PYTEST := $(UV) run pytest
 
 # Default target
 help:
@@ -22,13 +22,24 @@ help:
 
 # Build and install the package
 build:
+	@if [ ! -f "$(UV)" ] && ! PATH="$(HOME)/.local/bin:$$PATH" command -v uv >/dev/null 2>&1; then \
+		echo "uv is not installed. Installing uv..."; \
+		curl -LsSf https://astral.sh/uv/install.sh | sh; \
+	fi
 	@echo "Cleaning build artifacts..."
 	rm -rf build/
-	find . -type f -name "*.so" -delete
+	find . -path "./.venv" -prune -o -type f -name "*.so" -print | xargs rm -f 2>/dev/null || true
+	@echo "Syncing uv environment and installing dependencies..."
+	$(UV) sync
+	@PYTHON_VER=$$($(UV) run python --version 2>&1 | cut -d' ' -f2 | cut -d. -f1,2); \
+	if [ ! -f ".venv/lib/python$$PYTHON_VER/site-packages/torch/lib/libtorch_global_deps.so" ]; then \
+		$(UV) pip uninstall torch 2>/dev/null || true; \
+		$(UV) pip install --no-cache torch; \
+	fi
 	@echo "Uninstalling stainx if installed..."
-	-$(PIP) uninstall -y stainx 2>/dev/null || true
+	-$(UV) pip uninstall -y stainx 2>/dev/null || true
 	@echo "Building and installing stainx in editable mode..."
-	$(PIP) install -e .
+	$(UV) pip install -e .
 	@echo "Build and install complete!"
 
 # Clean build artifacts and cache files
@@ -47,24 +58,33 @@ clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
 	find . -type f -name "*.pyo" -delete
-	find . -type f -name "*.so" -delete
+	find . -path "./.venv" -prune -o -type f -name "*.so" -print | xargs rm -f 2>/dev/null || true
 	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 	@echo "Clean complete!"
 
 # Run tests
 test:
 	@echo "Running tests..."
+	$(UV) sync --dev
+	@PYTHON_VER=$$($(UV) run python --version 2>&1 | cut -d' ' -f2 | cut -d. -f1,2); \
+	if [ ! -f ".venv/lib/python$$PYTHON_VER/site-packages/torch/lib/libtorch_global_deps.so" ]; then \
+		$(UV) pip uninstall torch 2>/dev/null || true; \
+		$(UV) pip install --no-cache torch; \
+	fi
 	$(PYTEST) tests/ -v
 
 # Run tests with coverage
 test-cov:
 	@echo "Running tests with coverage..."
+	$(UV) sync --dev
 	$(PYTEST) tests/ -v --cov=src/stainx --cov-report=term-missing --cov-report=html
 
 # Install package in editable mode
 install:
+	@echo "Syncing uv environment and installing dependencies..."
+	$(UV) sync
 	@echo "Installing stainx in editable mode..."
-	$(PIP) install -e .
+	$(UV) pip install -e .
 
 # Install package with dev dependencies
 install-dev:
@@ -74,15 +94,15 @@ install-dev:
 # Format code
 format:
 	@echo "Formatting code..."
-	ruff format src/ tests/
+	$(UV) run ruff format src/ tests/
 
 # Lint code
 lint:
 	@echo "Linting code..."
-	ruff check src/ tests/
+	$(UV) run ruff check src/ tests/
 
 # Type check
 typecheck:
 	@echo "Type checking..."
-	mypy src/ || echo "mypy not installed, skipping type check"
+	$(UV) run mypy src/ || echo "mypy not installed, skipping type check"
 

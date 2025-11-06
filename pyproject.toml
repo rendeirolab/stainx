@@ -12,7 +12,8 @@ dependencies = [
     "torch>=2.0.0",
 ]
 authors = [
-    { name = "Yimin Zheng", email = "yzheng@cemm.oeaw.ac.at"}
+    { name = "Yimin Zheng", email = "yzheng@cemm.oeaw.ac.at"},
+    { name = "Samir Moustafa", email = "smoustafa@cemm.oeaw.ac.at"}
 ]
 classifiers = [
     "Environment :: GPU :: NVIDIA CUDA",
