@@ -10,19 +10,12 @@ This module provides implementations of various stain normalization methods
 for histopathology images.
 """
 
-from .histogram_matching import HistogramMatching
-from .macenko import Macenko
-from .reinhard import Reinhard
-from .vahadane import Vahadane
+from stainx.normalizers.histogram_matching import HistogramMatching
+from stainx.normalizers.macenko import Macenko
+from stainx.normalizers.reinhard import Reinhard
 
 __all__ = [
     "HistogramMatching",
-    "Reinhard", 
     "Macenko",
-    "Vahadane",
+    "Reinhard",
 ]
-
-
-
-
-

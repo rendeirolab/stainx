@@ -17,17 +17,10 @@ __version__ = "0.1.0"
 #     HistogramMatchingCUDA,
 #     ReinhardCUDA,
 #     MacenkoCUDA,
-#     VahadaneCUDA,
 # )
 
 __all__ = [
     # "HistogramMatchingCUDA",
-    # "ReinhardCUDA", 
+    # "ReinhardCUDA",
     # "MacenkoCUDA",
-    # "VahadaneCUDA",
 ]
-
-
-
-
-

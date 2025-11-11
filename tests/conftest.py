@@ -15,30 +15,29 @@ import torch
 @pytest.fixture
 def sample_images():
     """Create sample histopathology images for testing."""
-    return torch.rand(4, 3, 256, 256)
+    return (torch.rand(4, 3, 256, 256) * 255).round().to(torch.uint8)
 
 
 @pytest.fixture
 def reference_images():
     """Create reference images for normalization."""
-    return torch.rand(2, 3, 256, 256)
+    return (torch.rand(2, 3, 256, 256) * 255).round().to(torch.uint8)
 
 
 @pytest.fixture
 def single_image():
     """Create a single image for transform testing."""
-    return torch.rand(3, 256, 256)
+    return (torch.rand(3, 256, 256) * 255).round().to(torch.uint8)
 
 
 @pytest.fixture
 def device():
     """Get the appropriate device for testing."""
     if torch.cuda.is_available():
-        return torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        return torch.device("mps")
-    else:
         return torch.device("cpu")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
 
 
 @pytest.fixture

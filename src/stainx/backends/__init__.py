@@ -10,19 +10,16 @@ This module provides access to different backend implementations
 (CUDA, PyTorch) for stain normalization algorithms.
 """
 
-from .torch_backend import (
+from stainx.backends.torch_backend import (
     HistogramMatchingPyTorch,
     MacenkoPyTorch,
     PyTorchBackendBase,
     ReinhardPyTorch,
-    VahadanePyTorch,
 )
 
 __all__ = [
-    "PyTorchBackendBase",
     "HistogramMatchingPyTorch",
-    "ReinhardPyTorch",
     "MacenkoPyTorch",
-    "VahadanePyTorch",
+    "PyTorchBackendBase",
+    "ReinhardPyTorch",
 ]
-

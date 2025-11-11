@@ -22,7 +22,6 @@ torch::Tensor histogram_matching_cuda(
 // TODO: Add forward declarations for other methods when implemented
 // torch::Tensor reinhard_cuda(...);
 // torch::Tensor macenko_cuda(...);
-// torch::Tensor vahadane_cuda(...);
 
 PYBIND11_MODULE(stainx_cuda, m) {
     m.doc() = "StainX CUDA backend for GPU-accelerated stain normalization";
@@ -33,7 +32,6 @@ PYBIND11_MODULE(stainx_cuda, m) {
     // TODO: Add bindings for other CUDA implementations when ready
     // m.def("reinhard", &reinhard_cuda, "Reinhard normalization CUDA");
     // m.def("macenko", &macenko_cuda, "Macenko normalization CUDA");
-    // m.def("vahadane", &vahadane_cuda, "Vahadane normalization CUDA");
 }
 
 

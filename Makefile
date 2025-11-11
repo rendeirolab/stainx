@@ -3,7 +3,7 @@
 #
 # This software is distributed under the terms of the GNU General Public License v3 (GPLv3).
 # See the LICENSE file for details.
-.PHONY: build clean test install install-dev help
+.PHONY: build clean test install install-dev help lint fix
 
 # Variables
 PYTHON := $(UV) run python
@@ -19,6 +19,8 @@ help:
 	@echo "  make test       - Run tests"
 	@echo "  make install    - Install package in editable mode"
 	@echo "  make install-dev - Install package with dev dependencies"
+	@echo "  make lint       - Check code for linting issues"
+	@echo "  make fix        - Auto-fix linting issues and format code"
 
 # Build and install the package
 build:
@@ -31,6 +33,8 @@ build:
 	find . -path "./.venv" -prune -o -type f -name "*.so" -print | xargs rm -f 2>/dev/null || true
 	@echo "Syncing uv environment and installing dependencies..."
 	$(UV) sync
+	@echo "Installing development dependencies from requirements-dev.txt..."
+	$(UV) pip install -r requirements-dev.txt
 	@PYTHON_VER=$$($(UV) run python --version 2>&1 | cut -d' ' -f2 | cut -d. -f1,2); \
 	if [ ! -f ".venv/lib/python$$PYTHON_VER/site-packages/torch/lib/libtorch_global_deps.so" ]; then \
 		$(UV) pip uninstall torch 2>/dev/null || true; \
@@ -44,7 +48,7 @@ build:
 
 # Clean build artifacts and cache files
 clean:
-	@echo "Cleaning build artifacts..."
+	@echo "Cleaning build artifacts and caches..."
 	rm -rf build/
 	rm -rf dist/
 	rm -rf *.egg-info
@@ -55,12 +59,19 @@ clean:
 	rm -rf .pytest_cache/
 	rm -rf .mypy_cache/
 	rm -rf .ruff_cache/
+	rm -rf .tox/
+	rm -rf .hypothesis/
+	# Remove Python cache files and directories
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-	find . -type f -name "*.pyc" -delete
-	find . -type f -name "*.pyo" -delete
+	find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	find . -type f -name "*.pyo" -delete 2>/dev/null || true
+	find . -type f -name "*.pyd" -delete 2>/dev/null || true
+	# Remove compiled extensions (but not in .venv)
 	find . -path "./.venv" -prune -o -type f -name "*.so" -print | xargs rm -f 2>/dev/null || true
 	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
-	@echo "Clean complete!"
+	# Remove any .cache directories (e.g., from pytest-xdist)
+	find . -type d -name ".cache" -not -path "./.venv/*" -exec rm -rf {} + 2>/dev/null || true
+	@echo "Clean complete! (Note: Python's in-memory import cache will be cleared on next Python restart)"
 
 # Run tests
 test:
@@ -91,15 +102,17 @@ install-dev:
 	@echo "Installing stainx with dev dependencies..."
 	$(UV) sync --dev
 
-# Format code
-format:
-	@echo "Formatting code..."
-	$(UV) run ruff format src/ tests/
-
-# Lint code
+# Check code for linting issues
 lint:
-	@echo "Linting code..."
-	$(UV) run ruff check src/ tests/
+	@echo "Checking code for linting issues..."
+	$(UV) run ruff check .
+
+# Auto-fix linting issues and format code
+fix:
+	@echo "Fixing linting issues and formatting code..."
+	$(UV) run ruff check --fix --unsafe-fixes .
+	$(UV) run ruff format .
+	@echo "Code formatting and linting fixes complete!"
 
 # Type check
 typecheck:

@@ -10,7 +10,6 @@ We will include several numerical methods for stain normalization:
 1. Histogram matching
 2. Reinhard
 3. Mecenko
-4. Vahadane
 
 The implementations will include:
 1. A pure pytorch-based implementation

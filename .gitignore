@@ -5,9 +5,14 @@ build/
 dist/
 wheels/
 *.egg-info
+.ruff_cache/
 
 # Virtual environments
 .venv
 
 .idea/
 .vscode/
+
+# Benchmark logs
+benchmarks/logs/
+*.log
