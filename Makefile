@@ -31,18 +31,9 @@ build:
 	@echo "Cleaning build artifacts..."
 	rm -rf build/
 	find . -path "./.venv" -prune -o -type f -name "*.so" -print | xargs rm -f 2>/dev/null || true
-	@echo "Syncing uv environment and installing dependencies..."
-	$(UV) sync
-	@echo "Installing development dependencies from requirements-dev.txt..."
-	$(UV) pip install -r requirements-dev.txt
-	@PYTHON_VER=$$($(UV) run python --version 2>&1 | cut -d' ' -f2 | cut -d. -f1,2); \
-	if [ ! -f ".venv/lib/python$$PYTHON_VER/site-packages/torch/lib/libtorch_global_deps.so" ]; then \
-		$(UV) pip uninstall torch 2>/dev/null || true; \
-		$(UV) pip install --no-cache torch; \
-	fi
-	@echo "Uninstalling stainx if installed..."
-	-$(UV) pip uninstall -y stainx 2>/dev/null || true
-	@echo "Building and installing stainx in editable mode..."
+	@echo "Syncing uv environment with dev dependencies..."
+	$(UV) sync --dev
+	@echo "Installing stainx in editable mode..."
 	$(UV) pip install -e .
 	@echo "Build and install complete!"
 
@@ -76,18 +67,19 @@ clean:
 # Run tests
 test:
 	@echo "Running tests..."
-	$(UV) sync --dev
-	@PYTHON_VER=$$($(UV) run python --version 2>&1 | cut -d' ' -f2 | cut -d. -f1,2); \
-	if [ ! -f ".venv/lib/python$$PYTHON_VER/site-packages/torch/lib/libtorch_global_deps.so" ]; then \
-		$(UV) pip uninstall torch 2>/dev/null || true; \
-		$(UV) pip install --no-cache torch; \
+	@if [ ! -d ".venv" ]; then \
+		echo "Virtual environment not found. Running 'make build' first..."; \
+		$(MAKE) build; \
 	fi
 	$(PYTEST) tests/ -v
 
 # Run tests with coverage
 test-cov:
 	@echo "Running tests with coverage..."
-	$(UV) sync --dev
+	@if [ ! -d ".venv" ]; then \
+		echo "Virtual environment not found. Running 'make build' first..."; \
+		$(MAKE) build; \
+	fi
 	$(PYTEST) tests/ -v --cov=src/stainx --cov-report=term-missing --cov-report=html
 
 # Install package in editable mode
@@ -95,7 +87,7 @@ install:
 	@echo "Syncing uv environment and installing dependencies..."
 	$(UV) sync
 	@echo "Installing stainx in editable mode..."
-	$(UV) pip install -e .
+	$(UV) pip install -e . || $(UV) sync
 
 # Install package with dev dependencies
 install-dev:
