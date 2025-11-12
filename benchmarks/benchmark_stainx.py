@@ -400,8 +400,8 @@ def main():
     parser.add_argument(
         "--device",
         type=str,
-        default="cuda",
-        choices=["auto", "cpu", "cuda"],
+        default="auto",
+        choices=["auto", "cpu", "mps", "cuda"],
         help="Device to use",
     )
     parser.add_argument(
@@ -416,7 +416,7 @@ def main():
 
     # Determine device
     if args.device == "auto":
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     else:
         device = args.device
 
@@ -436,8 +436,12 @@ def main():
         logger.info("CUDA requested but not available, falling back to CPU")
         device = "cpu"
 
+    if device == "mps" and not torch.backends.mps.is_available():
+        logger.info("MPS requested but not available, falling back to CPU")
+        device = "cpu"
+
     logger.info(
-        f"Device: {torch.cuda.get_device_name(0) if device == 'cuda' else 'CPU'}"
+        f"Device: {torch.cuda.get_device_name(0) if device == 'cuda' else 'MPS' if device == 'mps' else 'CPU'}"
     )
     logger.info(f"Warmup runs: {args.warmup}, Benchmark runs: {args.runs}")
     logger.info("")
