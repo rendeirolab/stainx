@@ -661,6 +661,37 @@ class MacenkoPyTorch(PyTorchBackendBase):
         k = 1 + round(0.01 * float(q) * (t.numel() - 1))
         return t.view(-1).kthvalue(k).values.item()
 
+    @staticmethod
+    def _eigh_with_mps_fallback(cov: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Compute eigendecomposition with fallback to CPU for MPS devices.
+
+        MPS (Metal Performance Shaders) on Apple Silicon doesn't support
+        torch.linalg.eigh, so we fall back to CPU for this operation.
+
+        Parameters
+        ----------
+        cov : torch.Tensor
+            Covariance matrix of shape (3, 3)
+
+        Returns
+        -------
+        tuple[torch.Tensor, torch.Tensor]
+            (eigenvalues, eigenvectors) where eigenvectors are on the same device as input
+        """
+        device = cov.device
+        # MPS doesn't support eigh, so move to CPU for computation
+        # TODO[Samir]: In the future, if this issue (https://github.com/pytorch/pytorch/issues/141287) is resolved, we can remove this fallback.
+        if device.type == "mps":
+            cov_cpu = cov.cpu()
+            eigvals, eigvecs = torch.linalg.eigh(cov_cpu)
+            # Move eigenvectors back to original device
+            eigvecs = eigvecs.to(device)
+            eigvals = eigvals.to(device)
+        else:
+            eigvals, eigvecs = torch.linalg.eigh(cov)
+        return eigvals, eigvecs
+
     def _process_single_image(
         self,
         od: torch.Tensor,
@@ -700,7 +731,7 @@ class MacenkoPyTorch(PyTorchBackendBase):
                 (3, 3), dtype=od_centered.dtype, device=od_centered.device
             )
 
-        _, eigvecs = torch.linalg.eigh(cov)
+        _, eigvecs = self._eigh_with_mps_fallback(cov)
         eigvecs = eigvecs[:, [1, 2]]
 
         That = torch.matmul(od_filtered, eigvecs)
@@ -829,7 +860,7 @@ class MacenkoPyTorch(PyTorchBackendBase):
         od_centered = od_for_cov - od_mean
         cov = torch.matmul(od_centered.T, od_centered) / (od_for_cov.shape[0] - 1)
 
-        _eigvals, eigvecs = torch.linalg.eigh(cov)
+        _eigvals, eigvecs = self._eigh_with_mps_fallback(cov)
 
         stain_vectors = eigvecs[:, [1, 2]]
 
