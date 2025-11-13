@@ -141,9 +141,11 @@ class BenchmarkExecutor:
     ) -> dict[str, Any]:
         """Benchmark stainx Reinhard implementation."""
         normalizer = Reinhard(device=device)
+        # Fit once outside the benchmark loop
+        normalizer.fit(reference_image)
 
         def operation():
-            normalizer.fit(reference_image)
+            # Only benchmark transform
             return normalizer.transform(source_image)
 
         return self._execute_benchmark(operation, "StainX Reinhard", device)
@@ -155,9 +157,11 @@ class BenchmarkExecutor:
         ref_chw = reference_image.squeeze(0).cpu()
         src_chw = source_image.squeeze(0).cpu()
         normalizer = TorchReinhardNormalizer()
+        # Fit once outside the benchmark loop
+        normalizer.fit(ref_chw)
 
         def operation():
-            normalizer.fit(ref_chw)
+            # Only benchmark transform
             return normalizer.normalize(src_chw)
 
         return self._execute_benchmark(operation, "TorchStain Reinhard", "cpu")
@@ -167,9 +171,11 @@ class BenchmarkExecutor:
     ) -> dict[str, Any]:
         """Benchmark stainx Macenko implementation."""
         normalizer = Macenko(device=device)
+        # Fit once outside the benchmark loop
+        normalizer.fit(reference_image)
 
         def operation():
-            normalizer.fit(reference_image)
+            # Only benchmark transform
             return normalizer.transform(source_image)
 
         return self._execute_benchmark(operation, "StainX Macenko", device)
@@ -181,9 +187,11 @@ class BenchmarkExecutor:
         ref_chw = reference_image.squeeze(0).cpu()
         src_chw = source_image.squeeze(0).cpu()
         normalizer = TorchMacenkoNormalizer()
+        # Fit once outside the benchmark loop
+        normalizer.fit(ref_chw)
 
         def operation():
-            normalizer.fit(ref_chw)
+            # Only benchmark transform
             result, _, _ = normalizer.normalize(src_chw, stains=True)
             return result
 
@@ -201,9 +209,11 @@ class BenchmarkExecutor:
         ref_input = converter.prepare_for_normalizer(reference_image)
         src_input = converter.prepare_for_normalizer(source_image)
         normalizer = HistogramMatching(device=device, channel_axis=channel_axis)
+        # Fit once outside the benchmark loop
+        normalizer.fit(ref_input)
 
         def operation():
-            normalizer.fit(ref_input)
+            # Only benchmark transform
             return normalizer.transform(src_input)
 
         return self._execute_benchmark(operation, "StainX HistogramMatching", device)
