@@ -46,6 +46,8 @@ dev = [
     "prettytable>=3.0.0",
     "torchvision>=0.15.0",
     "ruff>=0.1.0",
+    "slideflow[cucim]>=3.0.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "slideflow>=3.0.0; sys_platform != 'linux' or platform_machine != 'x86_64'",
 ]
 benchmark = [
     "slideflow[cucim]>=3.0.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
