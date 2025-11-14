@@ -162,7 +162,7 @@ class BenchmarkExecutor:
     ) -> dict[str, Any]:
         """Benchmark SlideFlow Reinhard implementation."""
         # Use SlideFlow autoselect to get PyTorch normalizer (supports batches and CUDA)
-        normalizer = sf_norm.autoselect("reinhard")
+        normalizer = sf_norm.autoselect("reinhard_fast")
         normalizer.device = device
         
         # Convert to uint8 and ensure on correct device
@@ -177,8 +177,6 @@ class BenchmarkExecutor:
         normalizer.fit(ref_first_np)
 
         def operation():
-            # Only benchmark transform
-            # TorchStainNormalizer accepts PyTorch tensors in (N, C, H, W) format
             return normalizer.transform(src_uint8)
 
         return self._execute_benchmark(operation, "SlideFlow Reinhard", device)
@@ -201,8 +199,7 @@ class BenchmarkExecutor:
         self, reference_batch: torch.Tensor, source_batch: torch.Tensor, device: str
     ) -> dict[str, Any]:
         """Benchmark SlideFlow Macenko implementation."""
-        # Use SlideFlow autoselect to get PyTorch normalizer (supports batches and CUDA)
-        normalizer = sf_norm.autoselect("macenko")
+        normalizer = sf_norm.autoselect("macenko_fast")
         normalizer.device = device
         
         # Convert to uint8 and ensure on correct device
@@ -217,8 +214,6 @@ class BenchmarkExecutor:
         normalizer.fit(ref_first_np)
 
         def operation():
-            # Only benchmark transform
-            # TorchStainNormalizer accepts PyTorch tensors in (N, C, H, W) format
             return normalizer.transform(src_uint8)
 
         return self._execute_benchmark(operation, "SlideFlow Macenko", device)
@@ -390,7 +385,7 @@ def main():
     )
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument(
-        "--batch-size", type=int, default=8, help="Batch size for images"
+        "--batch-size", type=int, default=128, help="Batch size for images"
     )
 
     args = parser.parse_args()
