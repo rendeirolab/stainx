@@ -148,7 +148,7 @@ class BenchmarkExecutor:
     ) -> dict[str, Any]:
         """Benchmark stainx Reinhard implementation."""
         normalizer = Reinhard(device=device)
-        # Fit once outside the benchmark loop
+        # Fit once outside the benchmark loop on first image
         normalizer.fit(reference_batch[:1])
 
         def operation():
@@ -165,19 +165,19 @@ class BenchmarkExecutor:
         normalizer = sf_norm.autoselect("reinhard_fast")
         normalizer.device = device
         
-        # Convert to uint8 and ensure on correct device
-        ref_uint8 = reference_batch.to(torch.uint8).to(device)
-        src_uint8 = source_batch.to(torch.uint8).to(device)
+        # Ensure on correct device (data is already uint8 from generator)
+        ref_batch = reference_batch.to(device)
+        src_batch = source_batch.to(device)
         
-        # Convert first image to numpy for fitting (fit expects numpy in HWC format)
-        # Must move to CPU before converting to numpy (CUDA tensors can't convert directly)
-        ref_first_np = ref_uint8[0].permute(1, 2, 0).cpu().numpy()  # (C, H, W) -> (H, W, C)
+        # Extract first image (index 0) - same as reference_batch[:1] but without batch dim
+        # Convert to numpy HWC format for SlideFlow fit (permute reorders dims, doesn't change image)
+        ref_first_np = ref_batch[0].permute(1, 2, 0).cpu().numpy()  # (C, H, W) -> (H, W, C)
         
-        # Fit once outside the benchmark loop
+        # Fit once outside the benchmark loop on the same first image (index 0) as StainX
         normalizer.fit(ref_first_np)
 
         def operation():
-            return normalizer.transform(src_uint8)
+            return normalizer.transform(src_batch)
 
         return self._execute_benchmark(operation, "SlideFlow Reinhard", device)
 
@@ -186,7 +186,7 @@ class BenchmarkExecutor:
     ) -> dict[str, Any]:
         """Benchmark stainx Macenko implementation."""
         normalizer = Macenko(device=device)
-        # Fit once outside the benchmark loop
+        # Fit once outside the benchmark loop on first image
         normalizer.fit(reference_batch[:1])
 
         def operation():
@@ -202,19 +202,19 @@ class BenchmarkExecutor:
         normalizer = sf_norm.autoselect("macenko_fast")
         normalizer.device = device
         
-        # Convert to uint8 and ensure on correct device
-        ref_uint8 = reference_batch.to(torch.uint8).to(device)
-        src_uint8 = source_batch.to(torch.uint8).to(device)
+        # Ensure on correct device (data is already uint8 from generator)
+        ref_batch = reference_batch.to(device)
+        src_batch = source_batch.to(device)
         
-        # Convert first image to numpy for fitting (fit expects numpy in HWC format)
-        # Must move to CPU before converting to numpy (CUDA tensors can't convert directly)
-        ref_first_np = ref_uint8[0].permute(1, 2, 0).cpu().numpy()  # (C, H, W) -> (H, W, C)
+        # Extract first image (index 0) - same as reference_batch[:1] but without batch dim
+        # Convert to numpy HWC format for SlideFlow fit (permute reorders dims, doesn't change image)
+        ref_first_np = ref_batch[0].permute(1, 2, 0).cpu().numpy()  # (C, H, W) -> (H, W, C)
         
-        # Fit once outside the benchmark loop
+        # Fit once outside the benchmark loop on the same first image (index 0) as StainX
         normalizer.fit(ref_first_np)
 
         def operation():
-            return normalizer.transform(src_uint8)
+            return normalizer.transform(src_batch)
 
         return self._execute_benchmark(operation, "SlideFlow Macenko", device)
 
