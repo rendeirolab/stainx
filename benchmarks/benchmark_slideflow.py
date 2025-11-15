@@ -276,16 +276,16 @@ class BenchmarkRunner:
         }
 
     @staticmethod
-    def calculate_speedup(baseline_time: float, comparison_time: float) -> str:
+    def calculate_speedup(baseline_ips: float, comparison_ips: float) -> str:
         """
         Calculate speedup factor.
 
         Parameters
         ----------
-        baseline_time : float
-            Baseline implementation time in ms
-        comparison_time : float
-            Comparison implementation time in ms
+        baseline_ips : float
+            Baseline implementation images per second
+        comparison_ips : float
+            Comparison implementation images per second
 
         Returns
         -------
@@ -293,11 +293,11 @@ class BenchmarkRunner:
             Speedup factor as "X.XXx" or "N/A"
         """
         if (
-            baseline_time != float("inf")
-            and comparison_time != float("inf")
-            and comparison_time > 0
+            baseline_ips != float("inf")
+            and comparison_ips != float("inf")
+            and baseline_ips > 0
         ):
-            speedup = baseline_time / comparison_time
+            speedup = comparison_ips / baseline_ips
             return f"{speedup:.2f}x"
         return "N/A"
 
@@ -385,7 +385,7 @@ def main():
     )
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument(
-        "--batch-size", type=int, default=128, help="Batch size for images"
+        "--batch-size", type=int, default=16, help="Batch size for images"
     )
 
     args = parser.parse_args()
@@ -449,21 +449,21 @@ def main():
 
     # Create tables for each method
     reinhard_table = PrettyTable()
-    reinhard_table.title = f"Reinhard Benchmark ({device.upper()})"
+    reinhard_table.title = f"Reinhard Benchmark ({device.upper()}, batch={args.batch_size})"
     reinhard_table.field_names = [
         "Image Size (HxW)",
-        "StainX (ms)",
-        "SlideFlow (ms)",
+        "StainX (img/s)",
+        "SlideFlow (img/s)",
         "Speedup",
         "Relative Error",
     ]
 
     macenko_table = PrettyTable()
-    macenko_table.title = f"Macenko Benchmark ({device.upper()})"
+    macenko_table.title = f"Macenko Benchmark ({device.upper()}, batch={args.batch_size})"
     macenko_table.field_names = [
         "Image Size (HxW)",
-        "StainX (ms)",
-        "SlideFlow (ms)",
+        "StainX (img/s)",
+        "SlideFlow (img/s)",
         "Speedup",
         "Relative Error",
     ]
@@ -488,10 +488,22 @@ def main():
             reference_batch, source_batch, device
         )
 
+        # Calculate images per second from time_ms
+        batch_size = reference_batch.shape[0]
+        if reinhard_results["stainx"]["success"] and reinhard_results["stainx"]["time_ms"] > 0:
+            stainx_ips = (batch_size * 1000) / reinhard_results["stainx"]["time_ms"]
+        else:
+            stainx_ips = 0.0
+        
+        if reinhard_results["slideflow"]["success"] and reinhard_results["slideflow"]["time_ms"] > 0:
+            slideflow_ips = (batch_size * 1000) / reinhard_results["slideflow"]["time_ms"]
+        else:
+            slideflow_ips = 0.0
+
         # Calculate speedup (stainx vs slideflow)
         speedup = BenchmarkRunner.calculate_speedup(
-            reinhard_results["slideflow"]["time_ms"],
-            reinhard_results["stainx"]["time_ms"],
+            slideflow_ips,
+            stainx_ips,
         )
 
         # Calculate relative error (compare first image of batch)
@@ -518,10 +530,10 @@ def main():
         reinhard_table.add_row(
             [
                 f"{height}x{width}",
-                f"{reinhard_results['stainx']['time_ms']:.3f}"
+                f"{stainx_ips:.2f}"
                 if reinhard_results["stainx"]["success"]
                 else "ERROR",
-                f"{reinhard_results['slideflow']['time_ms']:.3f}"
+                f"{slideflow_ips:.2f}"
                 if reinhard_results["slideflow"]["success"]
                 else "ERROR",
                 speedup,
@@ -535,10 +547,22 @@ def main():
             reference_batch, source_batch, device
         )
 
+        # Calculate images per second from time_ms
+        batch_size = reference_batch.shape[0]
+        if macenko_results["stainx"]["success"] and macenko_results["stainx"]["time_ms"] > 0:
+            stainx_ips = (batch_size * 1000) / macenko_results["stainx"]["time_ms"]
+        else:
+            stainx_ips = 0.0
+        
+        if macenko_results["slideflow"]["success"] and macenko_results["slideflow"]["time_ms"] > 0:
+            slideflow_ips = (batch_size * 1000) / macenko_results["slideflow"]["time_ms"]
+        else:
+            slideflow_ips = 0.0
+
         # Calculate speedup
         speedup = BenchmarkRunner.calculate_speedup(
-            macenko_results["slideflow"]["time_ms"],
-            macenko_results["stainx"]["time_ms"],
+            slideflow_ips,
+            stainx_ips,
         )
 
         # Calculate relative error (compare first image of batch)
@@ -565,10 +589,10 @@ def main():
         macenko_table.add_row(
             [
                 f"{height}x{width}",
-                f"{macenko_results['stainx']['time_ms']:.3f}"
+                f"{stainx_ips:.2f}"
                 if macenko_results["stainx"]["success"]
                 else "ERROR",
-                f"{macenko_results['slideflow']['time_ms']:.3f}"
+                f"{slideflow_ips:.2f}"
                 if macenko_results["slideflow"]["success"]
                 else "ERROR",
                 speedup,
