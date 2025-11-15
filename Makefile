@@ -90,12 +90,7 @@ install:
 	$(UV) sync
 	@echo "Installing stainx in editable mode..."
 	$(UV) pip install -e . || $(UV) sync
-
-# Install package with dev dependencies
-install-dev:
-	@echo "Installing stainx with dev dependencies..."
-	$(UV) sync --dev
-
+	
 # Check code for linting issues
 lint:
 	@echo "Checking code for linting issues..."
