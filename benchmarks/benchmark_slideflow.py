@@ -22,10 +22,9 @@ from stainx import Macenko, Reinhard
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "."))
 
-from logger import setup_logger
-
 # Import SlideFlow normalizers
 import slideflow.norm as sf_norm
+from logger import setup_logger
 
 # Global logger instance (will be initialized in main)
 logger = None
@@ -164,15 +163,17 @@ class BenchmarkExecutor:
         # Use SlideFlow autoselect to get PyTorch normalizer (supports batches and CUDA)
         normalizer = sf_norm.autoselect("reinhard_fast")
         normalizer.device = device
-        
+
         # Ensure on correct device (data is already uint8 from generator)
         ref_batch = reference_batch.to(device)
         src_batch = source_batch.to(device)
-        
+
         # Extract first image (index 0) - same as reference_batch[:1] but without batch dim
         # Convert to numpy HWC format for SlideFlow fit (permute reorders dims, doesn't change image)
-        ref_first_np = ref_batch[0].permute(1, 2, 0).cpu().numpy()  # (C, H, W) -> (H, W, C)
-        
+        ref_first_np = (
+            ref_batch[0].permute(1, 2, 0).cpu().numpy()
+        )  # (C, H, W) -> (H, W, C)
+
         # Fit once outside the benchmark loop on the same first image (index 0) as StainX
         normalizer.fit(ref_first_np)
 
@@ -201,15 +202,17 @@ class BenchmarkExecutor:
         """Benchmark SlideFlow Macenko implementation."""
         normalizer = sf_norm.autoselect("macenko_fast")
         normalizer.device = device
-        
+
         # Ensure on correct device (data is already uint8 from generator)
         ref_batch = reference_batch.to(device)
         src_batch = source_batch.to(device)
-        
+
         # Extract first image (index 0) - same as reference_batch[:1] but without batch dim
         # Convert to numpy HWC format for SlideFlow fit (permute reorders dims, doesn't change image)
-        ref_first_np = ref_batch[0].permute(1, 2, 0).cpu().numpy()  # (C, H, W) -> (H, W, C)
-        
+        ref_first_np = (
+            ref_batch[0].permute(1, 2, 0).cpu().numpy()
+        )  # (C, H, W) -> (H, W, C)
+
         # Fit once outside the benchmark loop on the same first image (index 0) as StainX
         normalizer.fit(ref_first_np)
 
@@ -449,7 +452,9 @@ def main():
 
     # Create tables for each method
     reinhard_table = PrettyTable()
-    reinhard_table.title = f"Reinhard Benchmark ({device.upper()}, batch={args.batch_size})"
+    reinhard_table.title = (
+        f"Reinhard Benchmark ({device.upper()}, batch={args.batch_size})"
+    )
     reinhard_table.field_names = [
         "Image Size (HxW)",
         "StainX (img/s)",
@@ -459,7 +464,9 @@ def main():
     ]
 
     macenko_table = PrettyTable()
-    macenko_table.title = f"Macenko Benchmark ({device.upper()}, batch={args.batch_size})"
+    macenko_table.title = (
+        f"Macenko Benchmark ({device.upper()}, batch={args.batch_size})"
+    )
     macenko_table.field_names = [
         "Image Size (HxW)",
         "StainX (img/s)",
@@ -472,14 +479,21 @@ def main():
     logger.info("=" * 100)
 
     for height, width in image_sizes:
-        logger.info(f"Testing image size: {height}x{width} (batch size: {args.batch_size})")
+        logger.info(
+            f"Testing image size: {height}x{width} (batch size: {args.batch_size})"
+        )
 
         # Generate test image batches
         reference_batch = ImageGenerator.generate_batch(
             args.batch_size, height, width, args.channels, seed=args.seed, device=device
         )
         source_batch = ImageGenerator.generate_batch(
-            args.batch_size, height, width, args.channels, seed=args.seed + 1, device=device
+            args.batch_size,
+            height,
+            width,
+            args.channels,
+            seed=args.seed + 1,
+            device=device,
         )
 
         # Reinhard benchmarks
@@ -490,13 +504,21 @@ def main():
 
         # Calculate images per second from time_ms
         batch_size = reference_batch.shape[0]
-        if reinhard_results["stainx"]["success"] and reinhard_results["stainx"]["time_ms"] > 0:
+        if (
+            reinhard_results["stainx"]["success"]
+            and reinhard_results["stainx"]["time_ms"] > 0
+        ):
             stainx_ips = (batch_size * 1000) / reinhard_results["stainx"]["time_ms"]
         else:
             stainx_ips = 0.0
-        
-        if reinhard_results["slideflow"]["success"] and reinhard_results["slideflow"]["time_ms"] > 0:
-            slideflow_ips = (batch_size * 1000) / reinhard_results["slideflow"]["time_ms"]
+
+        if (
+            reinhard_results["slideflow"]["success"]
+            and reinhard_results["slideflow"]["time_ms"] > 0
+        ):
+            slideflow_ips = (batch_size * 1000) / reinhard_results["slideflow"][
+                "time_ms"
+            ]
         else:
             slideflow_ips = 0.0
 
@@ -520,7 +542,11 @@ def main():
 
             # Compare first image of batch
             stainx_result = reinhard_results["stainx"]["result"][0].cpu().float()
-            slideflow_first = slideflow_result[0] if len(slideflow_result.shape) == 4 else slideflow_result
+            slideflow_first = (
+                slideflow_result[0]
+                if len(slideflow_result.shape) == 4
+                else slideflow_result
+            )
             rel_error = BenchmarkRunner.calculate_relative_error(
                 stainx_result, slideflow_first
             )
@@ -549,13 +575,21 @@ def main():
 
         # Calculate images per second from time_ms
         batch_size = reference_batch.shape[0]
-        if macenko_results["stainx"]["success"] and macenko_results["stainx"]["time_ms"] > 0:
+        if (
+            macenko_results["stainx"]["success"]
+            and macenko_results["stainx"]["time_ms"] > 0
+        ):
             stainx_ips = (batch_size * 1000) / macenko_results["stainx"]["time_ms"]
         else:
             stainx_ips = 0.0
-        
-        if macenko_results["slideflow"]["success"] and macenko_results["slideflow"]["time_ms"] > 0:
-            slideflow_ips = (batch_size * 1000) / macenko_results["slideflow"]["time_ms"]
+
+        if (
+            macenko_results["slideflow"]["success"]
+            and macenko_results["slideflow"]["time_ms"] > 0
+        ):
+            slideflow_ips = (batch_size * 1000) / macenko_results["slideflow"][
+                "time_ms"
+            ]
         else:
             slideflow_ips = 0.0
 
@@ -579,7 +613,11 @@ def main():
 
             # Compare first image of batch
             stainx_result = macenko_results["stainx"]["result"][0].cpu().float()
-            slideflow_first = slideflow_result[0] if len(slideflow_result.shape) == 4 else slideflow_result
+            slideflow_first = (
+                slideflow_result[0]
+                if len(slideflow_result.shape) == 4
+                else slideflow_result
+            )
             rel_error = BenchmarkRunner.calculate_relative_error(
                 stainx_result, slideflow_first
             )
@@ -615,4 +653,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
