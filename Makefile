@@ -35,6 +35,8 @@ build:
 	$(UV) sync --dev
 	@echo "Installing stainx in editable mode..."
 	$(UV) pip install -e .
+	@echo "Installing benchmark dependencies..."
+	$(UV) pip install --group benchmark .
 	@echo "Build and install complete!"
 
 # Clean build artifacts and cache files
