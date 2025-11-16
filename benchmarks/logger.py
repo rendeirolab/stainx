@@ -4,9 +4,7 @@ import re
 
 
 class NoColorFormatter(logging.Formatter):
-    ansi_escape = re.compile(
-        r"\x1B[@-_][0-?]*[ -/]*[@-~]"
-    )  # Regex to match ANSI escape codes
+    ansi_escape = re.compile(r"\x1B[@-_][0-?]*[ -/]*[@-~]")  # Regex to match ANSI escape codes
 
     def format(self, record):
         original = super().format(record)

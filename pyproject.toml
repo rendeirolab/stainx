@@ -106,8 +106,8 @@ exclude = [
     "stain-normalization-gpu",  # Separate project directory
 ]
 
-# Same as Black.
-line-length = 88
+# Increased line length to allow merging of longer expressions
+line-length = 320
 indent-width = 4
 
 # Assume Python 3.12
@@ -139,6 +139,7 @@ ignore = [
     "T201",  # print statements (may be intentional in some contexts)
     "N806",  # Variable in function should be lowercase (scientific notation like L, A, B, N, C, H, W are common)
     "N803",  # Argument name should be lowercase (scientific notation is common)
+    "COM812",  # trailing comma enforcement (prevents formatter from collapsing statements)
 ]
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.
@@ -148,13 +149,17 @@ unfixable = []
 [tool.ruff.lint.isort]
 # Enable import sorting
 known-first-party = ["stainx"]
+# Disable split on trailing comma to be compatible with skip-magic-trailing-comma=true
+split-on-trailing-comma = false
 
 [tool.ruff.format]
 # Use double quotes for strings.
 quote-style = "double"
 # Indent with spaces, rather than tabs.
 indent-style = "space"
-# Respect magic trailing commas.
-skip-magic-trailing-comma = false
+# Skip magic trailing commas to allow more aggressive collapsing
+skip-magic-trailing-comma = true
 # Automatically detect the appropriate line ending.
 line-ending = "auto"
+# Enable preview mode for more aggressive line merging
+preview = true

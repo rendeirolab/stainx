@@ -31,87 +31,20 @@ logger = None
 
 
 class ImageGenerator:
-    """Generate test images for benchmarking."""
-
     @staticmethod
-    def generate_batch(
-        batch_size: int,
-        height: int,
-        width: int,
-        channels: int = 3,
-        seed: int = 42,
-        device: str = "cpu",
-    ) -> torch.Tensor:
-        """
-        Generate a batch of random test images.
-
-        Parameters
-        ----------
-        batch_size : int
-            Number of images in the batch
-        height : int
-            Image height
-        width : int
-            Image width
-        channels : int, default=3
-            Number of channels
-        seed : int, default=42
-            Random seed
-        device : str, default="cpu"
-            Device to create tensor on
-
-        Returns
-        -------
-        torch.Tensor
-            Image tensor of shape (batch_size, C, H, W) with uint8 dtype
-        """
+    def generate_batch(batch_size: int, height: int, width: int, channels: int = 3, seed: int = 42, device: str = "cpu") -> torch.Tensor:
         torch.manual_seed(seed)
         np.random.seed(seed)
         device_obj = torch.device(device)
-        return (
-            (torch.rand(batch_size, channels, height, width, device=device_obj) * 255)
-            .round()
-            .to(torch.uint8)
-        )
+        return (torch.rand(batch_size, channels, height, width, device=device_obj) * 255).round().to(torch.uint8)
 
 
 class BenchmarkExecutor:
-    """Execute benchmark operations with warmup and timing."""
-
     def __init__(self, warmup_iterations: int = 3, benchmark_iterations: int = 10):
-        """
-        Initialize benchmark executor.
-
-        Parameters
-        ----------
-        warmup_iterations : int, default=3
-            Number of warmup iterations
-        benchmark_iterations : int, default=10
-            Number of benchmark iterations
-        """
         self.warmup_iterations = warmup_iterations
         self.benchmark_iterations = benchmark_iterations
 
-    def _execute_benchmark(
-        self, operation_func: Callable, name: str, device: str = "cpu"
-    ) -> dict[str, Any]:
-        """
-        Execute a benchmark operation.
-
-        Parameters
-        ----------
-        operation_func : Callable
-            Function to benchmark (should return the result)
-        name : str
-            Name of the operation for logging
-        device : str, default="cpu"
-            Device being used
-
-        Returns
-        -------
-        Dict[str, Any]
-            Dictionary with 'result', 'time_ms', and 'success' keys
-        """
+    def _execute_benchmark(self, operation_func: Callable, name: str, device: str = "cpu") -> dict[str, Any]:
         try:
             # Warmup
             for _ in range(self.warmup_iterations):
@@ -142,10 +75,7 @@ class BenchmarkExecutor:
             if device == "cuda" and torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-    def run_stainx_reinhard(
-        self, reference_batch: torch.Tensor, source_batch: torch.Tensor, device: str
-    ) -> dict[str, Any]:
-        """Benchmark stainx Reinhard implementation."""
+    def run_stainx_reinhard(self, reference_batch: torch.Tensor, source_batch: torch.Tensor, device: str) -> dict[str, Any]:
         normalizer = Reinhard(device=device)
         # Fit once outside the benchmark loop on first image
         normalizer.fit(reference_batch[:1])
@@ -156,10 +86,7 @@ class BenchmarkExecutor:
 
         return self._execute_benchmark(operation, "StainX Reinhard", device)
 
-    def run_slideflow_reinhard(
-        self, reference_batch: torch.Tensor, source_batch: torch.Tensor, device: str
-    ) -> dict[str, Any]:
-        """Benchmark SlideFlow Reinhard implementation."""
+    def run_slideflow_reinhard(self, reference_batch: torch.Tensor, source_batch: torch.Tensor, device: str) -> dict[str, Any]:
         # Use SlideFlow autoselect to get PyTorch normalizer (supports batches and CUDA)
         normalizer = sf_norm.autoselect("reinhard_fast")
         normalizer.device = device
@@ -170,9 +97,7 @@ class BenchmarkExecutor:
 
         # Extract first image (index 0) - same as reference_batch[:1] but without batch dim
         # Convert to numpy HWC format for SlideFlow fit (permute reorders dims, doesn't change image)
-        ref_first_np = (
-            ref_batch[0].permute(1, 2, 0).cpu().numpy()
-        )  # (C, H, W) -> (H, W, C)
+        ref_first_np = ref_batch[0].permute(1, 2, 0).cpu().numpy()  # (C, H, W) -> (H, W, C)
 
         # Fit once outside the benchmark loop on the same first image (index 0) as StainX
         normalizer.fit(ref_first_np)
@@ -182,10 +107,7 @@ class BenchmarkExecutor:
 
         return self._execute_benchmark(operation, "SlideFlow Reinhard", device)
 
-    def run_stainx_macenko(
-        self, reference_batch: torch.Tensor, source_batch: torch.Tensor, device: str
-    ) -> dict[str, Any]:
-        """Benchmark stainx Macenko implementation."""
+    def run_stainx_macenko(self, reference_batch: torch.Tensor, source_batch: torch.Tensor, device: str) -> dict[str, Any]:
         normalizer = Macenko(device=device)
         # Fit once outside the benchmark loop on first image
         normalizer.fit(reference_batch[:1])
@@ -196,10 +118,7 @@ class BenchmarkExecutor:
 
         return self._execute_benchmark(operation, "StainX Macenko", device)
 
-    def run_slideflow_macenko(
-        self, reference_batch: torch.Tensor, source_batch: torch.Tensor, device: str
-    ) -> dict[str, Any]:
-        """Benchmark SlideFlow Macenko implementation."""
+    def run_slideflow_macenko(self, reference_batch: torch.Tensor, source_batch: torch.Tensor, device: str) -> dict[str, Any]:
         normalizer = sf_norm.autoselect("macenko_fast")
         normalizer.device = device
 
@@ -209,9 +128,7 @@ class BenchmarkExecutor:
 
         # Extract first image (index 0) - same as reference_batch[:1] but without batch dim
         # Convert to numpy HWC format for SlideFlow fit (permute reorders dims, doesn't change image)
-        ref_first_np = (
-            ref_batch[0].permute(1, 2, 0).cpu().numpy()
-        )  # (C, H, W) -> (H, W, C)
+        ref_first_np = ref_batch[0].permute(1, 2, 0).cpu().numpy()  # (C, H, W) -> (H, W, C)
 
         # Fit once outside the benchmark loop on the same first image (index 0) as StainX
         normalizer.fit(ref_first_np)
@@ -223,104 +140,24 @@ class BenchmarkExecutor:
 
 
 class BenchmarkRunner:
-    """Run comprehensive benchmarks comparing stainx against SlideFlow."""
-
     def __init__(self, warmup_iterations: int = 3, benchmark_iterations: int = 10):
-        """
-        Initialize benchmark runner.
-
-        Parameters
-        ----------
-        warmup_iterations : int, default=3
-            Number of warmup iterations
-        benchmark_iterations : int, default=10
-            Number of benchmark iterations
-        """
         self.executor = BenchmarkExecutor(warmup_iterations, benchmark_iterations)
 
-    def run_reinhard_benchmarks(
-        self, reference_batch: torch.Tensor, source_batch: torch.Tensor, device: str
-    ) -> dict[str, dict[str, Any]]:
-        """
-        Run Reinhard normalization benchmarks.
+    def run_reinhard_benchmarks(self, reference_batch: torch.Tensor, source_batch: torch.Tensor, device: str) -> dict[str, dict[str, Any]]:
+        return {"stainx": self.executor.run_stainx_reinhard(reference_batch, source_batch, device), "slideflow": self.executor.run_slideflow_reinhard(reference_batch, source_batch, device)}
 
-        Returns
-        -------
-        Dict[str, Dict[str, Any]]
-            Dictionary with benchmark results for stainx and slideflow
-        """
-        return {
-            "stainx": self.executor.run_stainx_reinhard(
-                reference_batch, source_batch, device
-            ),
-            "slideflow": self.executor.run_slideflow_reinhard(
-                reference_batch, source_batch, device
-            ),
-        }
-
-    def run_macenko_benchmarks(
-        self, reference_batch: torch.Tensor, source_batch: torch.Tensor, device: str
-    ) -> dict[str, dict[str, Any]]:
-        """
-        Run Macenko normalization benchmarks.
-
-        Returns
-        -------
-        Dict[str, Dict[str, Any]]
-            Dictionary with benchmark results for stainx and slideflow
-        """
-        return {
-            "stainx": self.executor.run_stainx_macenko(
-                reference_batch, source_batch, device
-            ),
-            "slideflow": self.executor.run_slideflow_macenko(
-                reference_batch, source_batch, device
-            ),
-        }
+    def run_macenko_benchmarks(self, reference_batch: torch.Tensor, source_batch: torch.Tensor, device: str) -> dict[str, dict[str, Any]]:
+        return {"stainx": self.executor.run_stainx_macenko(reference_batch, source_batch, device), "slideflow": self.executor.run_slideflow_macenko(reference_batch, source_batch, device)}
 
     @staticmethod
     def calculate_speedup(baseline_ips: float, comparison_ips: float) -> str:
-        """
-        Calculate speedup factor.
-
-        Parameters
-        ----------
-        baseline_ips : float
-            Baseline implementation images per second
-        comparison_ips : float
-            Comparison implementation images per second
-
-        Returns
-        -------
-        str
-            Speedup factor as "X.XXx" or "N/A"
-        """
-        if (
-            baseline_ips != float("inf")
-            and comparison_ips != float("inf")
-            and baseline_ips > 0
-        ):
+        if baseline_ips != float("inf") and comparison_ips != float("inf") and baseline_ips > 0:
             speedup = comparison_ips / baseline_ips
             return f"{speedup:.2f}x"
         return "N/A"
 
     @staticmethod
     def calculate_relative_error(y1: torch.Tensor, y2: torch.Tensor) -> float:
-        """
-        Calculate relative error between two tensors.
-
-        Parameters
-        ----------
-        y1 : torch.Tensor
-            First tensor
-        y2 : torch.Tensor
-            Second tensor
-
-        Returns
-        -------
-        float
-            Relative error, or inf if tensors are incompatible
-        """
         if y1 is None or y2 is None:
             return float("inf")
 
@@ -359,65 +196,28 @@ class BenchmarkRunner:
 
 
 def main():
-    """Main benchmark execution function."""
-    parser = argparse.ArgumentParser(
-        description="Benchmark StainX runtime against SlideFlow"
-    )
-    parser.add_argument(
-        "--image-sizes",
-        nargs="+",
-        type=int,
-        default=None,
-        help="Multiple image sizes to test (format: H W)",
-    )
+    parser = argparse.ArgumentParser(description="Benchmark StainX runtime against SlideFlow")
+    parser.add_argument("--image-sizes", nargs="+", type=int, default=None, help="Multiple image sizes to test (format: H W)")
     parser.add_argument("--height", type=int, default=256, help="Image height")
     parser.add_argument("--width", type=int, default=256, help="Image width")
     parser.add_argument("--channels", type=int, default=3, help="Number of channels")
-    parser.add_argument(
-        "--device",
-        type=str,
-        default="auto",
-        choices=["auto", "cpu", "mps", "cuda"],
-        help="Device to use",
-    )
-    parser.add_argument(
-        "--warmup", type=int, default=3, help="Number of warmup iterations"
-    )
-    parser.add_argument(
-        "--runs", type=int, default=10, help="Number of benchmark iterations"
-    )
+    parser.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "mps", "cuda"], help="Device to use")
+    parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations")
+    parser.add_argument("--runs", type=int, default=10, help="Number of benchmark iterations")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument(
-        "--batch-size", type=int, default=16, help="Batch size for images"
-    )
+    parser.add_argument("--batch-size", type=int, default=16, help="Batch size for images")
 
     args = parser.parse_args()
 
     # Determine device
-    if args.device == "auto":
-        device = (
-            "cuda"
-            if torch.cuda.is_available()
-            else "mps"
-            if torch.backends.mps.is_available()
-            else "cpu"
-        )
-    else:
-        device = args.device
+    device = ("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu") if args.device == "auto" else args.device
 
     # Setup logging first
     current_time = datetime.now().strftime("%Y-%m-%d-%H-%M-%S-%f")
     log_file_name = f"{current_time}"
 
     global logger
-    logger = setup_logger(
-        filename=os.path.join(
-            os.path.dirname(__file__),
-            "logs",
-            f"slideflow_benchmark_{log_file_name}.log",
-        ),
-        verbose=True,
-    )
+    logger = setup_logger(filename=os.path.join(os.path.dirname(__file__), "logs", f"slideflow_benchmark_{log_file_name}.log"), verbose=True)
 
     if device == "cuda" and not torch.cuda.is_available():
         logger.info("CUDA requested but not available, falling back to CPU")
@@ -427,9 +227,7 @@ def main():
         logger.info("MPS requested but not available, falling back to CPU")
         device = "cpu"
 
-    logger.info(
-        f"Device: {torch.cuda.get_device_name(0) if device == 'cuda' else 'MPS' if device == 'mps' else 'CPU'}"
-    )
+    logger.info(f"Device: {torch.cuda.get_device_name(0) if device == 'cuda' else 'MPS' if device == 'mps' else 'CPU'}")
     logger.info(f"Batch size: {args.batch_size}")
     logger.info(f"Warmup runs: {args.warmup}, Benchmark runs: {args.runs}")
     logger.info("")
@@ -452,191 +250,78 @@ def main():
 
     # Create tables for each method
     reinhard_table = PrettyTable()
-    reinhard_table.title = (
-        f"Reinhard Benchmark ({device.upper()}, batch={args.batch_size})"
-    )
-    reinhard_table.field_names = [
-        "Image Size (HxW)",
-        "StainX (img/s)",
-        "SlideFlow (img/s)",
-        "Speedup",
-        "Relative Error",
-    ]
+    reinhard_table.title = f"Reinhard Benchmark ({device.upper()}, batch={args.batch_size})"
+    reinhard_table.field_names = ["Image Size (HxW)", "StainX (img/s)", "SlideFlow (img/s)", "Speedup", "Relative Error"]
 
     macenko_table = PrettyTable()
-    macenko_table.title = (
-        f"Macenko Benchmark ({device.upper()}, batch={args.batch_size})"
-    )
-    macenko_table.field_names = [
-        "Image Size (HxW)",
-        "StainX (img/s)",
-        "SlideFlow (img/s)",
-        "Speedup",
-        "Relative Error",
-    ]
+    macenko_table.title = f"Macenko Benchmark ({device.upper()}, batch={args.batch_size})"
+    macenko_table.field_names = ["Image Size (HxW)", "StainX (img/s)", "SlideFlow (img/s)", "Speedup", "Relative Error"]
 
     logger.info("Starting benchmark...")
     logger.info("=" * 100)
 
     for height, width in image_sizes:
-        logger.info(
-            f"Testing image size: {height}x{width} (batch size: {args.batch_size})"
-        )
+        logger.info(f"Testing image size: {height}x{width} (batch size: {args.batch_size})")
 
         # Generate test image batches
-        reference_batch = ImageGenerator.generate_batch(
-            args.batch_size, height, width, args.channels, seed=args.seed, device=device
-        )
-        source_batch = ImageGenerator.generate_batch(
-            args.batch_size,
-            height,
-            width,
-            args.channels,
-            seed=args.seed + 1,
-            device=device,
-        )
+        reference_batch = ImageGenerator.generate_batch(args.batch_size, height, width, args.channels, seed=args.seed, device=device)
+        source_batch = ImageGenerator.generate_batch(args.batch_size, height, width, args.channels, seed=args.seed + 1, device=device)
 
         # Reinhard benchmarks
         logger.info("  Running Reinhard benchmarks...")
-        reinhard_results = benchmark_runner.run_reinhard_benchmarks(
-            reference_batch, source_batch, device
-        )
+        reinhard_results = benchmark_runner.run_reinhard_benchmarks(reference_batch, source_batch, device)
 
         # Calculate images per second from time_ms
         batch_size = reference_batch.shape[0]
-        if (
-            reinhard_results["stainx"]["success"]
-            and reinhard_results["stainx"]["time_ms"] > 0
-        ):
-            stainx_ips = (batch_size * 1000) / reinhard_results["stainx"]["time_ms"]
-        else:
-            stainx_ips = 0.0
+        stainx_ips = batch_size * 1000 / reinhard_results["stainx"]["time_ms"] if reinhard_results["stainx"]["success"] and reinhard_results["stainx"]["time_ms"] > 0 else 0.0
 
-        if (
-            reinhard_results["slideflow"]["success"]
-            and reinhard_results["slideflow"]["time_ms"] > 0
-        ):
-            slideflow_ips = (batch_size * 1000) / reinhard_results["slideflow"][
-                "time_ms"
-            ]
-        else:
-            slideflow_ips = 0.0
+        slideflow_ips = batch_size * 1000 / reinhard_results["slideflow"]["time_ms"] if reinhard_results["slideflow"]["success"] and reinhard_results["slideflow"]["time_ms"] > 0 else 0.0
 
         # Calculate speedup (stainx vs slideflow)
-        speedup = BenchmarkRunner.calculate_speedup(
-            slideflow_ips,
-            stainx_ips,
-        )
+        speedup = BenchmarkRunner.calculate_speedup(slideflow_ips, stainx_ips)
 
         # Calculate relative error (compare first image of batch)
-        if (
-            reinhard_results["stainx"]["result"] is not None
-            and reinhard_results["slideflow"]["result"] is not None
-        ):
+        if reinhard_results["stainx"]["result"] is not None and reinhard_results["slideflow"]["result"] is not None:
             # TorchStainNormalizer returns PyTorch tensors in (N, C, H, W) format
             slideflow_result = reinhard_results["slideflow"]["result"]
-            if isinstance(slideflow_result, np.ndarray):
-                slideflow_result = torch.from_numpy(slideflow_result).float()
-            else:
-                slideflow_result = slideflow_result.cpu().float()
+            slideflow_result = torch.from_numpy(slideflow_result).float() if isinstance(slideflow_result, np.ndarray) else slideflow_result.cpu().float()
 
             # Compare first image of batch
             stainx_result = reinhard_results["stainx"]["result"][0].cpu().float()
-            slideflow_first = (
-                slideflow_result[0]
-                if len(slideflow_result.shape) == 4
-                else slideflow_result
-            )
-            rel_error = BenchmarkRunner.calculate_relative_error(
-                stainx_result, slideflow_first
-            )
+            slideflow_first = slideflow_result[0] if len(slideflow_result.shape) == 4 else slideflow_result
+            rel_error = BenchmarkRunner.calculate_relative_error(stainx_result, slideflow_first)
         else:
             rel_error = float("inf")
 
-        reinhard_table.add_row(
-            [
-                f"{height}x{width}",
-                f"{stainx_ips:.2f}"
-                if reinhard_results["stainx"]["success"]
-                else "ERROR",
-                f"{slideflow_ips:.2f}"
-                if reinhard_results["slideflow"]["success"]
-                else "ERROR",
-                speedup,
-                f"{rel_error:.6f}" if rel_error != float("inf") else "N/A",
-            ]
-        )
+        reinhard_table.add_row([f"{height}x{width}", f"{stainx_ips:.2f}" if reinhard_results["stainx"]["success"] else "ERROR", f"{slideflow_ips:.2f}" if reinhard_results["slideflow"]["success"] else "ERROR", speedup, f"{rel_error:.6f}" if rel_error != float("inf") else "N/A"])
 
         # Macenko benchmarks
         logger.info("  Running Macenko benchmarks...")
-        macenko_results = benchmark_runner.run_macenko_benchmarks(
-            reference_batch, source_batch, device
-        )
+        macenko_results = benchmark_runner.run_macenko_benchmarks(reference_batch, source_batch, device)
 
         # Calculate images per second from time_ms
         batch_size = reference_batch.shape[0]
-        if (
-            macenko_results["stainx"]["success"]
-            and macenko_results["stainx"]["time_ms"] > 0
-        ):
-            stainx_ips = (batch_size * 1000) / macenko_results["stainx"]["time_ms"]
-        else:
-            stainx_ips = 0.0
+        stainx_ips = batch_size * 1000 / macenko_results["stainx"]["time_ms"] if macenko_results["stainx"]["success"] and macenko_results["stainx"]["time_ms"] > 0 else 0.0
 
-        if (
-            macenko_results["slideflow"]["success"]
-            and macenko_results["slideflow"]["time_ms"] > 0
-        ):
-            slideflow_ips = (batch_size * 1000) / macenko_results["slideflow"][
-                "time_ms"
-            ]
-        else:
-            slideflow_ips = 0.0
+        slideflow_ips = batch_size * 1000 / macenko_results["slideflow"]["time_ms"] if macenko_results["slideflow"]["success"] and macenko_results["slideflow"]["time_ms"] > 0 else 0.0
 
         # Calculate speedup
-        speedup = BenchmarkRunner.calculate_speedup(
-            slideflow_ips,
-            stainx_ips,
-        )
+        speedup = BenchmarkRunner.calculate_speedup(slideflow_ips, stainx_ips)
 
         # Calculate relative error (compare first image of batch)
-        if (
-            macenko_results["stainx"]["result"] is not None
-            and macenko_results["slideflow"]["result"] is not None
-        ):
+        if macenko_results["stainx"]["result"] is not None and macenko_results["slideflow"]["result"] is not None:
             # TorchStainNormalizer returns PyTorch tensors in (N, C, H, W) format
             slideflow_result = macenko_results["slideflow"]["result"]
-            if isinstance(slideflow_result, np.ndarray):
-                slideflow_result = torch.from_numpy(slideflow_result).float()
-            else:
-                slideflow_result = slideflow_result.cpu().float()
+            slideflow_result = torch.from_numpy(slideflow_result).float() if isinstance(slideflow_result, np.ndarray) else slideflow_result.cpu().float()
 
             # Compare first image of batch
             stainx_result = macenko_results["stainx"]["result"][0].cpu().float()
-            slideflow_first = (
-                slideflow_result[0]
-                if len(slideflow_result.shape) == 4
-                else slideflow_result
-            )
-            rel_error = BenchmarkRunner.calculate_relative_error(
-                stainx_result, slideflow_first
-            )
+            slideflow_first = slideflow_result[0] if len(slideflow_result.shape) == 4 else slideflow_result
+            rel_error = BenchmarkRunner.calculate_relative_error(stainx_result, slideflow_first)
         else:
             rel_error = float("inf")
 
-        macenko_table.add_row(
-            [
-                f"{height}x{width}",
-                f"{stainx_ips:.2f}"
-                if macenko_results["stainx"]["success"]
-                else "ERROR",
-                f"{slideflow_ips:.2f}"
-                if macenko_results["slideflow"]["success"]
-                else "ERROR",
-                speedup,
-                f"{rel_error:.6f}" if rel_error != float("inf") else "N/A",
-            ]
-        )
+        macenko_table.add_row([f"{height}x{width}", f"{stainx_ips:.2f}" if macenko_results["stainx"]["success"] else "ERROR", f"{slideflow_ips:.2f}" if macenko_results["slideflow"]["success"] else "ERROR", speedup, f"{rel_error:.6f}" if rel_error != float("inf") else "N/A"])
 
     logger.info("=" * 100)
     logger.info("Benchmark Results:")

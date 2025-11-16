@@ -1,7 +1,3 @@
-"""
-StainX: GPU-accelerated stain normalization for histopathology images.
-"""
-
 __version__ = "0.1.0"
 
 # Import main normalizer classes
@@ -9,10 +5,4 @@ __version__ = "0.1.0"
 from stainx.base import StainNormalizerBase
 from stainx.normalizers import HistogramMatching, Macenko, Reinhard
 
-__all__ = [
-    "HistogramMatching",
-    "Macenko",
-    "Reinhard",
-    "StainNormalizerBase",
-    "__version__",
-]
+__all__ = ["HistogramMatching", "Macenko", "Reinhard", "StainNormalizerBase", "__version__"]
