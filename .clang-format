@@ -1,0 +1,53 @@
+# .clang-format file to keep function calls on a single line
+# To run it, use the following command:
+# find . \( -name "*.h" -o -name "*.cpp" -o -name "*.cu" -o -name "*.cuh" \) -exec clang-format -i {} \;
+
+# Based on Google style
+BasedOnStyle: Google
+
+# General settings
+ColumnLimit: 320
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+
+# Includes
+SortIncludes: true
+IncludeCategories:
+  - Regex: '^<.*>$'         # Standard/system headers
+    Priority: 1
+  - Regex: '^"QSpMM"'       # Project headers
+    Priority: 2
+  - Regex: '^".*"$'         # Local headers
+    Priority: 3
+
+# Function calls and parameters
+AllowShortFunctionsOnASingleLine: InlineOnly
+BinPackArguments: false
+BinPackParameters: false
+
+# Bracing and control statements
+BreakBeforeBraces: Attach
+BraceWrapping:
+  AfterFunction: false
+  AfterClass: true
+  AfterNamespace: true
+  AfterStruct: true
+AllowShortIfStatementsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+AllowShortBlocksOnASingleLine: true
+
+# Alignment and pointers
+AlignTrailingComments: true
+AlignConsecutiveAssignments: true
+PointerAlignment: Left
+DerivePointerAlignment: false
+
+# Miscellaneous settings
+PenaltyReturnTypeOnItsOwnLine: 1000
+PenaltyBreakString: 100
+SpacesInAngles: false
+SpaceAfterTemplateKeyword: true
+SpaceBeforeParens: ControlStatements
+SpaceAfterCStyleCast: true
+Cpp11BracedListStyle: true

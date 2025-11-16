@@ -27,11 +27,6 @@ classifiers = [
 ]
 
 
-[tool.uv.workspace]
-members = ["packages/stainx-cuda"]
-
-[tool.uv.sources]
-stainx-cuda = { workspace = true }
 
 [dependency-groups]
 dev = [

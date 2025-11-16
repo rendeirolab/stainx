@@ -6,15 +6,15 @@
 .PHONY: build clean test install install-dev help lint fix
 
 # Variables
-PYTHON := $(UV) run python
 UV := $(shell PATH="$(HOME)/.local/bin:$$PATH" command -v uv 2>/dev/null || echo "$(HOME)/.local/bin/uv")
+PYTHON := $(UV) run python
 PIP := $(UV) run pip
 PYTEST := $(UV) run pytest
 
 # Default target
 help:
 	@echo "Available targets:"
-	@echo "  make build      - Build the package"
+	@echo "  make build      - Build the package (includes CUDA extension if available)"
 	@echo "  make clean      - Clean build artifacts and cache files"
 	@echo "  make test       - Run tests"
 	@echo "  make install    - Install package in editable mode"
@@ -30,9 +30,15 @@ build:
 	fi
 	@echo "Cleaning build artifacts..."
 	rm -rf build/
-	find . -path "./.venv" -prune -o -type f -name "*.so" -print | xargs rm -f 2>/dev/null || true
+	find . -path "./.venv" -prune -o -path "./src/stainx_cuda" -prune -o -type f -name "*.so" -print | xargs rm -f 2>/dev/null || true
 	@echo "Syncing uv environment with dev dependencies..."
 	$(UV) sync --dev
+	@echo "Building CUDA extension (if CUDA is available)..."
+	@$(UV) run python setup.py build_ext --inplace || echo "Warning: CUDA extension build failed or skipped, continuing with PyTorch backend only"
+	@for so_file in src/stainx_cuda*.so; do [ -f "$$so_file" ] && mv "$$so_file" src/stainx_cuda/ || true; done
+	@for so_file in src/stainx_cuda*.pyd; do [ -f "$$so_file" ] && mv "$$so_file" src/stainx_cuda/ || true; done
+	@for so_file in stainx_cuda*.so; do [ -f "$$so_file" ] && mv "$$so_file" src/stainx_cuda/ || true; done
+	@for so_file in stainx_cuda*.pyd; do [ -f "$$so_file" ] && mv "$$so_file" src/stainx_cuda/ || true; done
 	@echo "Installing stainx in editable mode..."
 	$(UV) pip install -e .
 	@echo "Installing benchmark dependencies..."
@@ -94,6 +100,7 @@ install:
 # Check code for linting issues
 lint:
 	@echo "Checking code for linting issues..."
+	@find src/stainx_cuda/csrc/ -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -o -name "*.cu" -o -name "*.cuh" | xargs clang-format --dry-run --Werror
 	$(UV) run ruff check .
 
 # Auto-fix linting issues and format code
@@ -101,6 +108,7 @@ fix:
 	@echo "Fixing linting issues and formatting code..."
 	$(UV) run ruff check --fix --unsafe-fixes .
 	$(UV) run ruff format .
+	@find src/stainx_cuda/csrc/ -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -o -name "*.cu" -o -name "*.cuh" | xargs clang-format -i
 	@echo "Code formatting and linting fixes complete!"
 
 # Type check

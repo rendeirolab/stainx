@@ -36,26 +36,57 @@ class HistogramMatchingCUDA(CUDABackendBase):
         super().__init__(device)
         self.channel_axis = channel_axis
 
-    def transform(self, images: torch.Tensor, reference_histogram: torch.Tensor) -> torch.Tensor:
+    def transform(self, images: torch.Tensor, reference_histogram: torch.Tensor | list) -> torch.Tensor:
         # Move tensors to CUDA device
         images = images.to(self.device)
-        reference_histogram = reference_histogram.to(self.device)
+
+        # Normalize to channels-first format for processing (matching PyTorch backend logic)
+        # Match PyTorch backend's _normalize_to_channels_first method exactly
+        # IMPORTANT: Do NOT fix corrupted formats - match PyTorch's behavior exactly
+        # (even if PyTorch processes corrupted formats incorrectly)
+        needs_permute = False
+        if self.channel_axis == -1 or (self.channel_axis == 3 and images.ndim == 4):
+            # Channels-last format (N, H, W, C) -> (N, C, H, W)
+            # Trust channel_axis - assume input is in channels-last format
+            # Note: This may produce wrong format if prepare_for_normalizer corrupted the input,
+            # but we match PyTorch backend's behavior exactly
+            images = images.permute(0, 3, 1, 2)
+            needs_permute = True
+
+        images = images.contiguous()
+
+        # CUDA kernel now accepts any number of channels at dim 1 to match PyTorch backend
+        # This allows processing corrupted formats the same (wrong) way PyTorch does
+        # No need to fix the format - process it as-is to match PyTorch's behavior exactly
+        images = images.contiguous()
+
+        # Handle reference histogram (can be list or single tensor)
+        # If list provided, stack into (C, 256) tensor for per-channel processing
+        if isinstance(reference_histogram, list):
+            # Stack per-channel histograms into (C, 256) tensor
+            ref_hist_list = [h.to(self.device) for h in reference_histogram]
+            # Ensure we have histograms for all channels (pad with first if needed)
+            while len(ref_hist_list) < images.size(1):
+                ref_hist_list.append(ref_hist_list[0])
+            ref_hist = torch.stack(ref_hist_list[: images.size(1)], dim=0)  # (C, 256)
+        else:
+            # Single histogram for all channels: (256,)
+            ref_hist = reference_histogram.to(self.device)
 
         # Check if CUDA function is available
         if not hasattr(stainx_cuda, "histogram_matching"):
-            raise NotImplementedError("CUDA histogram matching not yet implemented. The stainx_cuda extension is not built or the function is not available.")
+            raise RuntimeError("stainx_cuda.histogram_matching is not available. The CUDA extension may not be built correctly.")
 
-        # Call CUDA implementation
-        # This will raise AT_ERROR("CUDA histogram matching not yet implemented")
-        # from the C++ code if not implemented
-        try:
-            return stainx_cuda.histogram_matching(images, reference_histogram)
-        except RuntimeError as e:
-            # Catch the AT_ERROR from C++ code and re-raise with clearer message
-            error_msg = str(e)
-            if "not yet implemented" in error_msg.lower():
-                raise NotImplementedError(f"CUDA histogram matching not yet implemented: {error_msg}") from e
-            raise
+        # Call CUDA implementation (expects and returns (N, C, H, W) format)
+        # CUDA function now accepts either (256,) or (C, 256) tensor
+        result = stainx_cuda.histogram_matching(images, ref_hist)
+
+        # Restore to original channel format if needed (matching PyTorch backend logic)
+        if needs_permute:
+            # Convert back to channels-last (N, C, H, W) -> (N, H, W, C)
+            result = result.permute(0, 2, 3, 1)
+
+        return result
 
 
 class ReinhardCUDA(CUDABackendBase):
@@ -64,16 +95,35 @@ class ReinhardCUDA(CUDABackendBase):
         target_mean = target_mean.to(self.device)
         target_std = target_std.to(self.device)
 
-        # TODO: Implement when CUDA kernel is ready
-        raise NotImplementedError("CUDA Reinhard normalization not yet implemented")
+        # Check if CUDA function is available
+        if not hasattr(stainx_cuda, "reinhard"):
+            raise RuntimeError("stainx_cuda.reinhard is not available. The CUDA extension may not be built correctly.")
+
+        # Call CUDA implementation
+        return stainx_cuda.reinhard(images, target_mean, target_std)
 
 
 class MacenkoCUDA(CUDABackendBase):
-    def transform(self, images: torch.Tensor, stain_matrix: torch.Tensor, concentration_map: torch.Tensor) -> torch.Tensor:
-        images = images.to(self.device)
-        stain_matrix = stain_matrix.to(self.device)
-        if concentration_map is not None:
-            concentration_map = concentration_map.to(self.device)
+    def transform(self, images: torch.Tensor, stain_matrix: torch.Tensor, target_max_conc: torch.Tensor) -> torch.Tensor:
+        print("\n[MacenkoCUDA.transform] INPUT:")
+        print(f"  images shape: {images.shape}, dtype: {images.dtype}, range: [{images.min().item():.2f}, {images.max().item():.2f}]")
+        print(f"  stain_matrix shape: {stain_matrix.shape}, dtype: {stain_matrix.dtype}")
+        print(f"  stain_matrix:\n{stain_matrix}")
+        print(f"  target_max_conc shape: {target_max_conc.shape}, dtype: {target_max_conc.dtype}, values: {target_max_conc}")
 
-        # TODO: Implement when CUDA kernel is ready
-        raise NotImplementedError("CUDA Macenko normalization not yet implemented")
+        images = images.to(self.device).contiguous()
+        stain_matrix = stain_matrix.to(self.device)
+        target_max_conc = target_max_conc.to(self.device)
+
+        # Check if CUDA function is available
+        if not hasattr(stainx_cuda, "macenko"):
+            raise RuntimeError("stainx_cuda.macenko is not available. The CUDA extension may not be built correctly.")
+
+        # Call CUDA implementation
+        result = stainx_cuda.macenko(images, stain_matrix, target_max_conc)
+
+        print("[MacenkoCUDA.transform] OUTPUT:")
+        print(f"  result shape: {result.shape}, dtype: {result.dtype}, range: [{result.min().item():.2f}, {result.max().item():.2f}]")
+        print(f"  result sample (first 5x5 of channel 0):\n{result[0, 0, :5, :5]}")
+
+        return result
