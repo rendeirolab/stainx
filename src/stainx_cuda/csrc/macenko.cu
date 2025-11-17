@@ -10,12 +10,12 @@
  * This file contains CUDA kernels for Macenko stain normalization using SVD.
  */
 
+#include <torch/extension.h>
 #include <ATen/cuda/CUDAContext.h>
 #include <ATen/cuda/CUDAUtils.h>
 #include <cuda_runtime.h>
 #include <limits>
 #include <math.h>
-#include <torch/extension.h>
 
 #define THREADS_PER_BLOCK 256
 

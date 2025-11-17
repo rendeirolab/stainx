@@ -12,7 +12,31 @@ try:
     from pathlib import Path
 
     # Find and load the compiled .so file
-    so_file = next(Path(__file__).parent.glob("stainx_cuda*.so"), None)
+    # Check multiple possible locations and patterns
+    parent_dir = Path(__file__).parent
+    so_file = None
+    
+    # Try different patterns for the .so file
+    patterns = [
+        "stainx_cuda*.so",
+        "*_compiled*.so",
+        "*.so",  # Fallback: any .so file in the directory
+    ]
+    
+    for pattern in patterns:
+        matches = list(parent_dir.glob(pattern))
+        if matches:
+            so_file = matches[0]
+            break
+    
+    # Also check parent directory (where --inplace might put it)
+    if not so_file:
+        parent_parent = parent_dir.parent
+        for pattern in ["stainx_cuda*.so", "*_compiled*.so"]:
+            matches = list(parent_parent.glob(pattern))
+            if matches:
+                so_file = matches[0]
+                break
 
     if so_file:
         spec = importlib.util.spec_from_file_location("_compiled", so_file)
@@ -25,8 +49,19 @@ try:
             for attr in ["histogram_matching", "reinhard", "macenko"]:
                 if hasattr(_compiled, attr):
                     globals()[attr] = getattr(_compiled, attr)
-except Exception:
-    # CUDA extension not available - silently fail
+        else:
+            # Failed to create spec
+            import warnings
+            warnings.warn(f"Failed to create module spec from {so_file}")
+    else:
+        # No .so file found - this is expected if CUDA extension wasn't built
+        pass
+except Exception as e:
+    # CUDA extension not available - silently fail unless in debug mode
+    import os
+    if os.environ.get("STAINX_DEBUG_CUDA"):
+        import traceback
+        traceback.print_exc()
     pass
 
 __all__ = []

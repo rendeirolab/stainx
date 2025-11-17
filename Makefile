@@ -18,7 +18,6 @@ help:
 	@echo "  make clean      - Clean build artifacts and cache files"
 	@echo "  make test       - Run tests"
 	@echo "  make install    - Install package in editable mode"
-	@echo "  make install-dev - Install package with dev dependencies"
 	@echo "  make lint       - Check code for linting issues"
 	@echo "  make fix        - Auto-fix linting issues and format code"
 
@@ -39,6 +38,7 @@ build:
 	@for so_file in src/stainx_cuda*.pyd; do [ -f "$$so_file" ] && mv "$$so_file" src/stainx_cuda/ || true; done
 	@for so_file in stainx_cuda*.so; do [ -f "$$so_file" ] && mv "$$so_file" src/stainx_cuda/ || true; done
 	@for so_file in stainx_cuda*.pyd; do [ -f "$$so_file" ] && mv "$$so_file" src/stainx_cuda/ || true; done
+	@echo "CUDA extension build complete. Note: LD_LIBRARY_PATH may need to be set for runtime."
 	@echo "Installing stainx in editable mode..."
 	$(UV) pip install -e .
 	@echo "Installing benchmark dependencies..."
@@ -79,7 +79,13 @@ test:
 		echo "Virtual environment not found. Running 'make build' first..."; \
 		$(MAKE) build; \
 	fi
-	$(PYTEST) tests/ -v
+	@TORCH_LIB_PATH=$$($(PYTHON) -c 'import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), "lib"))' 2>/dev/null); \
+	if [ -z "$$TORCH_LIB_PATH" ] || [ ! -d "$$TORCH_LIB_PATH" ]; then \
+		echo "Warning: Could not find PyTorch library path, tests may fail if CUDA extension is used"; \
+		$(PYTEST) tests/ -v; \
+	else \
+		LD_LIBRARY_PATH="$$TORCH_LIB_PATH:$$LD_LIBRARY_PATH" $(PYTEST) tests/ -v; \
+	fi
 
 # Run tests with coverage
 test-cov:
@@ -88,15 +94,14 @@ test-cov:
 		echo "Virtual environment not found. Running 'make build' first..."; \
 		$(MAKE) build; \
 	fi
-	$(PYTEST) tests/ -v --cov=src/stainx --cov-report=term-missing --cov-report=html
+	@TORCH_LIB_PATH=$$($(PYTHON) -c 'import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), "lib"))' 2>/dev/null); \
+	if [ -z "$$TORCH_LIB_PATH" ] || [ ! -d "$$TORCH_LIB_PATH" ]; then \
+		echo "Warning: Could not find PyTorch library path, tests may fail if CUDA extension is used"; \
+		$(PYTEST) tests/ -v --cov=src/stainx --cov-report=term-missing --cov-report=html; \
+	else \
+		LD_LIBRARY_PATH="$$TORCH_LIB_PATH:$$LD_LIBRARY_PATH" $(PYTEST) tests/ -v --cov=src/stainx --cov-report=term-missing --cov-report=html; \
+	fi
 
-# Install package in editable mode
-install:
-	@echo "Syncing uv environment and installing dependencies..."
-	$(UV) sync
-	@echo "Installing stainx in editable mode..."
-	$(UV) pip install -e . || $(UV) sync
-	
 # Check code for linting issues
 lint:
 	@echo "Checking code for linting issues..."
@@ -110,9 +115,4 @@ fix:
 	$(UV) run ruff format .
 	@find src/stainx_cuda/csrc/ -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -o -name "*.cu" -o -name "*.cuh" | xargs clang-format -i
 	@echo "Code formatting and linting fixes complete!"
-
-# Type check
-typecheck:
-	@echo "Type checking..."
-	$(UV) run mypy src/ || echo "mypy not installed, skipping type check"
 

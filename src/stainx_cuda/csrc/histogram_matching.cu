@@ -10,10 +10,10 @@
  * This file contains CUDA kernels for histogram matching stain normalization.
  */
 
+#include <torch/extension.h>
 #include <ATen/cuda/CUDAContext.h>
 #include <ATen/cuda/CUDAUtils.h>
 #include <cuda_runtime.h>
-#include <torch/extension.h>
 
 #define THREADS_PER_BLOCK 256
 
