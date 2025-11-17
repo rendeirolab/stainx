@@ -25,3 +25,4 @@ htmlcov/
 # Benchmark logs
 benchmarks/logs/
 *.log
+src/stainx_cuda/*.so
