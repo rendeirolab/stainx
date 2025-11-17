@@ -19,6 +19,17 @@
 
 #define THREADS_PER_BLOCK 256
 
+// Kernel to convert input to uint8 (handles float input, scaling from [0,1] to [0,255])
+__global__ void convert_to_uint8_kernel(const float* input, uint8_t* output, bool scale_from_01, int num_pixels) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_pixels) {
+        float val = input[idx];
+        if (scale_from_01) { val = val * 255.0f; }
+        val         = fmaxf(0.0f, fminf(255.0f, val));
+        output[idx] = (uint8_t) val;
+    }
+}
+
 // Kernel to compute histogram using atomic operations
 __global__ void compute_histogram_kernel(const uint8_t* input, float* histogram, int num_pixels) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -28,9 +39,65 @@ __global__ void compute_histogram_kernel(const uint8_t* input, float* histogram,
     }
 }
 
+// Kernel to compute sum reduction for histogram normalization
+__global__ void sum_reduction_kernel(const float* input, float* output, int size) {
+    extern __shared__ float sdata[];
+    int tid = threadIdx.x;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // Load data into shared memory
+    sdata[tid] = (idx < size) ? input[idx] : 0.0f;
+    __syncthreads();
+
+    // Reduction in shared memory
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s) { sdata[tid] += sdata[tid + s]; }
+        __syncthreads();
+    }
+
+    // Write result for this block
+    if (tid == 0) { output[blockIdx.x] = sdata[0]; }
+}
+
+// Kernel to find maximum value (for range checking)
+__global__ void max_reduction_kernel(const float* input, float* output, int size) {
+    extern __shared__ float sdata[];
+    int tid = threadIdx.x;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // Load data into shared memory
+    sdata[tid] = (idx < size) ? input[idx] : -1e10f;
+    __syncthreads();
+
+    // Reduction in shared memory
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s) { sdata[tid] = fmaxf(sdata[tid], sdata[tid + s]); }
+        __syncthreads();
+    }
+
+    // Write result for this block
+    if (tid == 0) { output[blockIdx.x] = sdata[0]; }
+}
+
+// Kernel to normalize histogram (divide by sum)
+__global__ void normalize_histogram_kernel(float* histogram, float sum, int num_bins) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_bins) { histogram[idx] = histogram[idx] / (sum + 1e-8f); }
+}
+
+// Kernel to compute CDF (cumulative sum)
+__global__ void compute_cdf_kernel(const float* histogram, float* cdf, int num_bins) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_bins) {
+        float sum = 0.0f;
+        for (int i = 0; i <= idx; i++) { sum += histogram[i]; }
+        cdf[idx] = sum;
+    }
+}
+
 // Kernel to build lookup table from source and reference CDFs
 // This matches the PyTorch implementation using searchsorted-like logic
-__global__ void build_lookup_table_kernel(const float* source_cdf, const float* ref_cdf, const float* ref_values, float* lookup_table, int num_bins) {
+__global__ void build_lookup_table_kernel(const float* source_cdf, const float* ref_cdf, float* lookup_table, int num_bins) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < num_bins) {
         float source_quantile = source_cdf[idx];
@@ -63,16 +130,16 @@ __global__ void build_lookup_table_kernel(const float* source_cdf, const float* 
         float alpha = 0.0f;
         if (quantile_diff > 1e-10f) { alpha = (source_quantile - quantile_left) / quantile_diff; }
 
-        // Interpolate values
-        float matched_value = ref_values[indices - 1] + alpha * (ref_values[indices] - ref_values[indices - 1]);
+        // Interpolate values (ref_values is just 0..255, so we use indices directly)
+        float matched_value = (indices - 1) + alpha;
 
         // Handle edge cases (matching PyTorch backend: apply below_min first, then above_max)
         bool below_min = (source_quantile <= ref_min);
         bool above_max = (source_quantile >= ref_max);
 
         // Apply edge case handling in same order as PyTorch: below_min first, then above_max
-        if (below_min) { matched_value = ref_values[0]; }
-        if (above_max) { matched_value = ref_values[num_bins - 1]; }
+        if (below_min) { matched_value = 0.0f; }
+        if (above_max) { matched_value = (float) (num_bins - 1); }
 
         lookup_table[idx] = fmaxf(0.0f, fminf(255.0f, matched_value));
     }
@@ -87,6 +154,217 @@ __global__ void apply_lookup_table_kernel(const uint8_t* input, const float* loo
     }
 }
 
+// Kernel to zero out a buffer
+__global__ void zero_kernel(float* data, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) { data[idx] = 0.0f; }
+}
+
+// Kernel to scale and clamp output
+__global__ void scale_clamp_output_kernel(float* output, bool scale_to_01, bool convert_to_uint8, int num_pixels) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_pixels) {
+        float val = output[idx];
+        if (scale_to_01) {
+            val = val / 255.0f;
+            val = fmaxf(0.0f, fminf(1.0f, val));
+        } else {
+            val = fmaxf(0.0f, fminf(255.0f, val));
+        }
+        output[idx] = val;
+    }
+}
+
+// Fused kernel to process a single channel (one block per channel)
+// Each block processes one channel completely: histogram -> normalize -> CDF -> lookup -> apply
+__global__ void process_channel_kernel(
+    const uint8_t* images_uint8,           // Input images (N*C*H*W, channels interleaved)
+    float* output,                          // Output images (N*C*H*W, channels interleaved)
+    const float* ref_hist,                  // Reference histogram(s): (C, 256) or (256,)
+    float* channel_buffers,                 // Per-channel buffers: (C, 3*num_bins) for hist, cdf, lookup
+    float* reduction_buffers,              // Per-channel reduction buffers: (C, max_reduction_size)
+    int N, int C, int H, int W,             // Image dimensions
+    int num_bins,                           // Number of histogram bins (256)
+    int total_pixels_per_channel,           // N * H * W
+    bool per_channel_histograms,            // Whether ref_hist is per-channel
+    int num_blocks_bins,                    // Number of blocks for bin operations
+    int max_reduction_size                  // Size of reduction buffer
+) {
+    // Each block processes one channel
+    int channel_idx = blockIdx.x;
+    if (channel_idx >= C) return;
+    
+    // In (N, C, H, W) format, channels are interleaved across images
+    // For channel c, data is at: n * (C*H*W) + c * (H*W) + h * W + w
+    // So we need to stride by C*H*W between images, and start at c*H*W
+    int pixels_per_image = H * W;
+    int stride_between_images = C * pixels_per_image;  // C * H * W
+    int channel_base_offset = channel_idx * pixels_per_image;  // c * H * W
+    
+    // Get pointers to this channel's buffers
+    int buffer_offset = channel_idx * 4 * num_bins;
+    float* source_hist = channel_buffers + buffer_offset;
+    float* source_cdf = channel_buffers + buffer_offset + num_bins;
+    float* ref_cdf_channel = channel_buffers + buffer_offset + 2 * num_bins;  // Temporary for per-channel case
+    float* lookup_table = channel_buffers + buffer_offset + 3 * num_bins;
+    float* sum_buffer = reduction_buffers + channel_idx * max_reduction_size;
+    
+    // Get reference CDF pointer
+    const float* ref_cdf_ptr;
+    if (per_channel_histograms) {
+        // Per-channel reference histogram - need to compute CDF
+        // Use source_hist temporarily for ref_hist_channel (we'll overwrite it later)
+        float* ref_hist_channel = source_hist;  // Temporary, will be overwritten
+        
+        // Copy reference histogram for this channel
+        const float* ref_hist_src = ref_hist + channel_idx * num_bins;
+        for (int i = threadIdx.x; i < num_bins; i += blockDim.x) {
+            ref_hist_channel[i] = ref_hist_src[i];
+        }
+        __syncthreads();
+        
+        // Compute sum of reference histogram
+        float ref_sum = 0.0f;
+        for (int i = threadIdx.x; i < num_bins; i += blockDim.x) {
+            ref_sum += ref_hist_channel[i];
+        }
+        // Reduce within block using shared memory
+        extern __shared__ float sdata[];
+        sdata[threadIdx.x] = ref_sum;
+        __syncthreads();
+        for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+            if (threadIdx.x < s) {
+                sdata[threadIdx.x] += sdata[threadIdx.x + s];
+            }
+            __syncthreads();
+        }
+        // Broadcast sum to all threads - all threads read from shared memory
+        __syncthreads();
+        ref_sum = sdata[0];
+        
+        // Normalize reference histogram
+        float inv_sum = 1.0f / (ref_sum + 1e-8f);
+        for (int i = threadIdx.x; i < num_bins; i += blockDim.x) {
+            ref_hist_channel[i] *= inv_sum;
+        }
+        __syncthreads();
+        
+        // Compute reference CDF (prefix sum - must be sequential)
+        if (threadIdx.x == 0) {
+            float sum = 0.0f;
+            for (int i = 0; i < num_bins; i++) {
+                sum += ref_hist_channel[i];
+                ref_cdf_channel[i] = sum;
+            }
+        }
+        __syncthreads();
+        ref_cdf_ptr = ref_cdf_channel;
+        
+        // Now zero out source histogram (ref_hist_channel was using this space)
+    } else {
+        // Single reference histogram - already computed, just get pointer
+        ref_cdf_ptr = ref_hist;  // In this case, ref_hist is actually the pre-computed CDF
+    }
+    
+    // Zero out source histogram
+    for (int i = threadIdx.x; i < num_bins; i += blockDim.x) {
+        source_hist[i] = 0.0f;
+    }
+    __syncthreads();
+    
+    // Compute histogram using atomic operations
+    // Access channel data with proper striding for (N, C, H, W) layout
+    int num_pixels = total_pixels_per_channel;
+    for (int pixel_idx = threadIdx.x; pixel_idx < num_pixels; pixel_idx += blockDim.x) {
+        // Calculate which image and pixel within that image
+        int n = pixel_idx / pixels_per_image;  // Image index
+        int pixel_in_image = pixel_idx % pixels_per_image;  // Pixel index within image
+        // Calculate actual memory offset: n * (C*H*W) + c * (H*W) + pixel_in_image
+        int mem_offset = n * stride_between_images + channel_base_offset + pixel_in_image;
+        uint8_t value = images_uint8[mem_offset];
+        atomicAdd(&source_hist[value], 1.0f);
+    }
+    __syncthreads();
+    
+    // Normalize source histogram
+    float total_sum = (float)total_pixels_per_channel;
+    float inv_total = 1.0f / (total_sum + 1e-8f);
+    for (int i = threadIdx.x; i < num_bins; i += blockDim.x) {
+        source_hist[i] *= inv_total;
+    }
+    __syncthreads();
+    
+    // Compute source CDF (prefix sum)
+    if (threadIdx.x == 0) {
+        float sum = 0.0f;
+        for (int i = 0; i < num_bins; i++) {
+            sum += source_hist[i];
+            source_cdf[i] = sum;
+        }
+    }
+    __syncthreads();
+    
+    // Build lookup table
+    for (int idx = threadIdx.x; idx < num_bins; idx += blockDim.x) {
+        float source_quantile = source_cdf[idx];
+        float ref_min = ref_cdf_ptr[0];
+        float ref_max = ref_cdf_ptr[num_bins - 1];
+        
+        // Binary search to find position
+        int left = 0;
+        int right = num_bins;
+        int mid;
+        
+        while (left < right) {
+            mid = (left + right) / 2;
+            if (ref_cdf_ptr[mid] < source_quantile) {
+                left = mid + 1;
+            } else {
+                right = mid;
+            }
+        }
+        
+        // Clamp indices
+        int indices = max(1, min(left, num_bins - 1));
+        
+        // Get quantiles for interpolation
+        float quantile_left = ref_cdf_ptr[indices - 1];
+        float quantile_right = ref_cdf_ptr[indices];
+        float quantile_diff = quantile_right - quantile_left;
+        
+        // Compute alpha for interpolation
+        float alpha = 0.0f;
+        if (quantile_diff > 1e-10f) {
+            alpha = (source_quantile - quantile_left) / quantile_diff;
+        }
+        
+        // Interpolate values
+        float matched_value = (indices - 1) + alpha;
+        
+        // Handle edge cases
+        bool below_min = (source_quantile <= ref_min);
+        bool above_max = (source_quantile >= ref_max);
+        
+        if (below_min) { matched_value = 0.0f; }
+        if (above_max) { matched_value = (float)(num_bins - 1); }
+        
+        lookup_table[idx] = fmaxf(0.0f, fminf(255.0f, matched_value));
+    }
+    __syncthreads();
+    
+    // Apply lookup table to output
+    // Access channel data with proper striding for (N, C, H, W) layout
+    for (int pixel_idx = threadIdx.x; pixel_idx < num_pixels; pixel_idx += blockDim.x) {
+        // Calculate which image and pixel within that image
+        int n = pixel_idx / pixels_per_image;  // Image index
+        int pixel_in_image = pixel_idx % pixels_per_image;  // Pixel index within image
+        // Calculate actual memory offset: n * (C*H*W) + c * (H*W) + pixel_in_image
+        int mem_offset = n * stride_between_images + channel_base_offset + pixel_in_image;
+        uint8_t pixel_value = images_uint8[mem_offset];
+        output[mem_offset] = lookup_table[pixel_value];
+    }
+}
+
 torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor reference_histogram) {
     // Check inputs
     TORCH_CHECK(input_images.is_cuda(), "input_images must be a CUDA tensor");
@@ -98,114 +376,186 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
     // Get device and stream
     cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
-    // Track original dtype and range for output preservation
+    // Track original dtype for output preservation
     torch::ScalarType original_dtype = input_images.scalar_type();
-    bool was_uint8_or_high_range     = (original_dtype == torch::kUInt8) || (input_images.max().item<float>() > 1.0f);
     bool needs_scale_back            = false;
+    bool was_uint8_or_high_range     = false;
 
-    // Ensure input is uint8 and channels-first format (N, C, H, W)
+    int N                        = input_images.size(0);
+    int C                        = input_images.size(1);
+    int H                        = input_images.size(2);
+    int W                        = input_images.size(3);
+    int num_bins                 = 256;
+    int total_pixels_per_channel = N * H * W;
+
+    // Check input range and convert to uint8 if needed
     torch::Tensor images_uint8;
     if (input_images.dtype() == torch::kUInt8) {
-        images_uint8 = input_images.contiguous();
+        images_uint8            = input_images.contiguous();
+        was_uint8_or_high_range = true;
     } else {
-        // Check if input is in [0, 1] range
-        if (input_images.max().item<float>() <= 1.0f) {
-            // Input is in [0, 1] range, scale to [0, 255] for processing
-            images_uint8     = (input_images * 255.0f).clamp(0.0f, 255.0f).to(torch::kUInt8).contiguous();
+        // Check if input is in [0, 1] range using max reduction
+        torch::Tensor input_flat = input_images.contiguous().view(-1);
+        int num_elements         = input_flat.numel();
+
+        // Use max reduction to find max value
+        int num_threads = THREADS_PER_BLOCK;
+        int num_blocks  = (num_elements + num_threads - 1) / num_threads;
+        int smem_size   = num_threads * sizeof(float);
+
+        // Allocate temporary buffer for reduction
+        torch::Tensor max_buffer = torch::empty({num_blocks}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
+
+        max_reduction_kernel<<<num_blocks, num_threads, smem_size, stream>>>(input_flat.data_ptr<float>(), max_buffer.data_ptr<float>(), num_elements);
+
+        // Final reduction if needed (for large arrays)
+        float max_val = 0.0f;
+        cudaStreamSynchronize(stream);
+        if (num_blocks > 1) {
+            // Recursive reduction until we have a small enough array
+            torch::Tensor current = max_buffer;
+            int current_size      = num_blocks;
+            while (current_size > 1) {
+                int next_blocks    = (current_size + num_threads - 1) / num_threads;
+                torch::Tensor next = torch::empty({next_blocks}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
+                max_reduction_kernel<<<next_blocks, num_threads, smem_size, stream>>>(current.data_ptr<float>(), next.data_ptr<float>(), current_size);
+                cudaStreamSynchronize(stream);
+                current      = next;
+                current_size = next_blocks;
+            }
+            max_val = current.item<float>();
+        } else {
+            max_val = max_buffer.item<float>();
+        }
+
+        // Determine if we need to scale
+        if (max_val <= 1.0f) {
             needs_scale_back = true;
         } else {
-            // Input is already in [0, 255] range
-            images_uint8 = input_images.clamp(0.0f, 255.0f).to(torch::kUInt8).contiguous();
+            was_uint8_or_high_range = true;
         }
+
+        // Convert to uint8 using CUDA kernel
+        images_uint8     = torch::empty({N, C, H, W}, torch::TensorOptions().dtype(torch::kUInt8).device(input_images.device()));
+        int total_pixels = N * C * H * W;
+        num_blocks       = (total_pixels + num_threads - 1) / num_threads;
+
+        convert_to_uint8_kernel<<<num_blocks, num_threads, 0, stream>>>(input_flat.data_ptr<float>(), images_uint8.data_ptr<uint8_t>(), needs_scale_back, total_pixels);
     }
 
-    int N        = images_uint8.size(0);
-    int C        = images_uint8.size(1);
-    int H        = images_uint8.size(2);
-    int W        = images_uint8.size(3);
-    int num_bins = 256;
+    // Prepare reference histogram(s) - convert to float32 and make contiguous
+    torch::Tensor ref_hist = reference_histogram.contiguous();
+    if (ref_hist.dtype() != torch::kFloat32) {
+        // Need to convert, but we'll do it on CPU for simplicity (small tensor)
+        ref_hist = ref_hist.to(torch::kFloat32).contiguous();
+    }
 
-    // Prepare reference histogram(s)
-    // Accept either: (256,) single histogram or (C, 256) per-channel histograms
-    torch::Tensor ref_hist      = reference_histogram.contiguous().to(torch::kFloat32);
     bool per_channel_histograms = false;
-    torch::Tensor ref_cdf;
-
     if (ref_hist.dim() == 1 && ref_hist.size(0) == num_bins) {
         // Single histogram for all channels
-        float ref_sum               = ref_hist.sum().item<float>();
-        torch::Tensor ref_hist_norm = ref_hist / (ref_sum + 1e-8f);
-        ref_cdf                     = ref_hist_norm.cumsum(0);
+        per_channel_histograms = false;
     } else if (ref_hist.dim() == 2 && ref_hist.size(0) == C && ref_hist.size(1) == num_bins) {
         // Per-channel histograms: (C, 256)
         per_channel_histograms = true;
-        // Will compute per-channel CDFs in the loop
     } else {
         TORCH_CHECK(false, "reference_histogram must be 1D with 256 elements or 2D with shape (C, 256)");
     }
 
-    // Allocate output tensor
-    torch::Tensor output = torch::empty_like(images_uint8, torch::kFloat32);
+    // Pre-compute reference CDFs on GPU
+    torch::Tensor ref_cdf;
+    if (!per_channel_histograms) {
+        // Single reference histogram - normalize and compute CDF on GPU
+        ref_cdf = torch::empty({num_bins}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
 
-    // Process each channel
-    for (int c = 0; c < C; c++) {
-        // Extract channel
-        torch::Tensor channel      = images_uint8.select(1, c).contiguous();  // (N, H, W)
-        torch::Tensor channel_flat = channel.reshape(-1);                     // (N*H*W,)
+        // Compute sum using reduction
+        int num_threads          = THREADS_PER_BLOCK;
+        int num_blocks           = (num_bins + num_threads - 1) / num_threads;
+        int smem_size            = num_threads * sizeof(float);
+        torch::Tensor sum_buffer = torch::empty({num_blocks}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
 
-        // Allocate histogram
-        torch::Tensor source_hist = torch::zeros({num_bins}, torch::TensorOptions().dtype(torch::kFloat32).device(images_uint8.device()));
+        sum_reduction_kernel<<<num_blocks, num_threads, smem_size, stream>>>(ref_hist.data_ptr<float>(), sum_buffer.data_ptr<float>(), num_bins);
 
-        // Compute histogram
-        int num_threads = THREADS_PER_BLOCK;
-        int num_blocks  = (channel_flat.numel() + num_threads - 1) / num_threads;
-
-        compute_histogram_kernel<<<num_blocks, num_threads, 0, stream>>>(channel_flat.data_ptr<uint8_t>(), source_hist.data_ptr<float>(), channel_flat.numel());
-
-        // Normalize histogram
-        float total_pixels             = channel_flat.numel();
-        torch::Tensor source_hist_norm = source_hist / (total_pixels + 1e-8f);
-
-        // Compute CDF using cumsum
-        torch::Tensor source_cdf = source_hist_norm.cumsum(0);
-
-        // Get reference CDF for this channel
-        torch::Tensor ref_cdf_channel;
-        if (per_channel_histograms) {
-            // Use per-channel histogram
-            torch::Tensor ref_hist_channel = ref_hist[c];  // (256,)
-            float ref_sum                  = ref_hist_channel.sum().item<float>();
-            torch::Tensor ref_hist_norm    = ref_hist_channel / (ref_sum + 1e-8f);
-            ref_cdf_channel                = ref_hist_norm.cumsum(0);
+        // Final reduction if needed
+        float ref_sum = 0.0f;
+        cudaStreamSynchronize(stream);
+        if (num_blocks > 1) {
+            // Recursive reduction until we have a small enough array
+            torch::Tensor current = sum_buffer;
+            int current_size      = num_blocks;
+            while (current_size > 1) {
+                int next_blocks    = (current_size + num_threads - 1) / num_threads;
+                torch::Tensor next = torch::empty({next_blocks}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
+                sum_reduction_kernel<<<next_blocks, num_threads, smem_size, stream>>>(current.data_ptr<float>(), next.data_ptr<float>(), current_size);
+                cudaStreamSynchronize(stream);
+                current      = next;
+                current_size = next_blocks;
+            }
+            ref_sum = current.item<float>();
         } else {
-            // Use single histogram for all channels
-            ref_cdf_channel = ref_cdf;
+            ref_sum = sum_buffer.item<float>();
         }
 
-        // Build lookup table
-        // Create ref_values tensor (0 to 255)
-        torch::Tensor ref_values = torch::arange(num_bins, torch::TensorOptions().dtype(torch::kFloat32).device(images_uint8.device()));
-
-        torch::Tensor lookup_table = torch::empty({num_bins}, torch::TensorOptions().dtype(torch::kFloat32).device(images_uint8.device()));
-
+        // Normalize histogram (copy first to avoid modifying original)
+        torch::Tensor ref_hist_norm = torch::empty_like(ref_hist);
+        cudaMemcpyAsync(ref_hist_norm.data_ptr<float>(), ref_hist.data_ptr<float>(), num_bins * sizeof(float), cudaMemcpyDeviceToDevice, stream);
         num_blocks = (num_bins + num_threads - 1) / num_threads;
-        build_lookup_table_kernel<<<num_blocks, num_threads, 0, stream>>>(source_cdf.data_ptr<float>(), ref_cdf_channel.data_ptr<float>(), ref_values.data_ptr<float>(), lookup_table.data_ptr<float>(), num_bins);
+        normalize_histogram_kernel<<<num_blocks, num_threads, 0, stream>>>(ref_hist_norm.data_ptr<float>(), ref_sum, num_bins);
 
-        // Apply lookup table
-        torch::Tensor channel_output = output.select(1, c).reshape(-1);  // (N*H*W,)
-        num_blocks                   = (channel_flat.numel() + num_threads - 1) / num_threads;
-
-        apply_lookup_table_kernel<<<num_blocks, num_threads, 0, stream>>>(channel_flat.data_ptr<uint8_t>(), lookup_table.data_ptr<float>(), channel_output.data_ptr<float>(), channel_flat.numel());
+        // Compute CDF
+        compute_cdf_kernel<<<num_blocks, num_threads, 0, stream>>>(ref_hist_norm.data_ptr<float>(), ref_cdf.data_ptr<float>(), num_bins);
     }
 
-    // Reshape output back to (N, C, H, W)
-    output = output.view({N, C, H, W});
+    // Allocate output tensor
+    torch::Tensor output = torch::empty({N, C, H, W}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
 
-    // Scale back to [0, 1] if input was in [0, 1] range (matching PyTorch backend logic)
-    if (needs_scale_back) { output = output / 255.0f; }
+    // Pre-allocate per-channel buffers for parallel processing
+    // Each channel needs: source_hist (num_bins), source_cdf (num_bins), ref_cdf_channel (num_bins, for per-channel case), lookup_table (num_bins)
+    // Total: C * 4 * num_bins
+    int num_threads     = THREADS_PER_BLOCK;
+    int num_blocks_bins = (num_bins + num_threads - 1) / num_threads;
+    int max_reduction_size = (num_blocks_bins > 1) ? num_blocks_bins : 1;
+    
+    // Per-channel buffers: (C, 4*num_bins) - for hist, cdf, ref_cdf (temp), lookup_table
+    torch::Tensor channel_buffers = torch::empty({C, 4 * num_bins}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
+    
+    // Per-channel reduction buffers: (C, max_reduction_size)
+    torch::Tensor reduction_buffers = torch::empty({C, max_reduction_size}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
+    
+    // Prepare reference data pointer
+    const float* ref_data_ptr;
+    if (!per_channel_histograms) {
+        // Single histogram - use pre-computed CDF
+        ref_data_ptr = ref_cdf.data_ptr<float>();
+    } else {
+        // Per-channel histograms - pass the histogram data
+        ref_data_ptr = ref_hist.data_ptr<float>();
+    }
 
-    // Clamp output to appropriate range
-    output = output.clamp(0.0f, needs_scale_back ? 1.0f : 255.0f);
+    // Launch parallel kernel: one block per channel
+    int threads_per_block = THREADS_PER_BLOCK;
+    int shared_mem_size = threads_per_block * sizeof(float);  // For reduction operations
+    
+    process_channel_kernel<<<C, threads_per_block, shared_mem_size, stream>>>(
+        images_uint8.data_ptr<uint8_t>(),
+        output.data_ptr<float>(),
+        ref_data_ptr,
+        channel_buffers.data_ptr<float>(),
+        reduction_buffers.data_ptr<float>(),
+        N, C, H, W,
+        num_bins,
+        total_pixels_per_channel,
+        per_channel_histograms,
+        num_blocks_bins,
+        max_reduction_size
+    );
+
+    // Scale and clamp output
+    int total_pixels = N * C * H * W;
+    int num_blocks   = (total_pixels + num_threads - 1) / num_threads;
+    scale_clamp_output_kernel<<<num_blocks, num_threads, 0, stream>>>(output.data_ptr<float>(), needs_scale_back, false, total_pixels);
+
+    // Synchronize before final dtype conversion
+    cudaStreamSynchronize(stream);
 
     // Preserve original dtype (matching PyTorch backend logic)
     if (was_uint8_or_high_range && !needs_scale_back) {
