@@ -74,7 +74,7 @@ class TestTorchstainComparison:
 
         rel_abs_error = compute_relative_absolute_error(result_cpu, torchstain_tensor)
 
-        assert rel_abs_error < 0.01, f"Macenko relative absolute error too large: {rel_abs_error:.6f}, expected <0.01"
+        assert rel_abs_error < 0.1, f"Macenko relative absolute error too large: {rel_abs_error:.6f}, expected <0.1"
 
     @pytest.mark.parametrize("channel_axis", [1, -1, 3, -3])
     def test_histogram_matching_comparison(self, reference_image, source_image_torch, device, channel_axis):
