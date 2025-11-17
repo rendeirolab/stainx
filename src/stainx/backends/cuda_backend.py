@@ -53,13 +53,6 @@ class HistogramMatchingCUDA(CUDABackendBase):
             images = images.permute(0, 3, 1, 2)
             needs_permute = True
 
-        images = images.contiguous()
-
-        # CUDA kernel now accepts any number of channels at dim 1 to match PyTorch backend
-        # This allows processing corrupted formats the same (wrong) way PyTorch does
-        # No need to fix the format - process it as-is to match PyTorch's behavior exactly
-        images = images.contiguous()
-
         # Handle reference histogram (can be list or single tensor)
         # If list provided, stack into (C, 256) tensor for per-channel processing
         if isinstance(reference_histogram, list):
@@ -105,7 +98,7 @@ class ReinhardCUDA(CUDABackendBase):
 
 class MacenkoCUDA(CUDABackendBase):
     def transform(self, images: torch.Tensor, stain_matrix: torch.Tensor, target_max_conc: torch.Tensor) -> torch.Tensor:
-        images = images.to(self.device).contiguous()
+        images = images.to(self.device)
         stain_matrix = stain_matrix.to(self.device)
         target_max_conc = target_max_conc.to(self.device)
 
