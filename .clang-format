@@ -14,12 +14,14 @@ UseTab: Never
 # Includes
 SortIncludes: true
 IncludeCategories:
-  - Regex: '^<.*>$'         # Standard/system headers
+  - Regex: '^<torch/extension\.h>$'  # torch/extension.h must come first in PyTorch CUDA extensions
+    Priority: 0
+  - Regex: '^<ATen/.*>$'             # ATen headers (should come after torch/extension.h)
     Priority: 1
-  - Regex: '^"QSpMM"'       # Project headers
+  - Regex: '^<.*>$'                   # Other standard/system headers
     Priority: 2
-  - Regex: '^".*"$'         # Local headers
-    Priority: 3
+  - Regex: '^".*"$'                   # Local headers
+    Priority: 4
 
 # Function calls and parameters
 AllowShortFunctionsOnASingleLine: InlineOnly

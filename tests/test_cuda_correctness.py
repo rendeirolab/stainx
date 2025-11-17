@@ -97,7 +97,7 @@ class TestCUDABackendComparison:
         ref_input = converter.prepare_for_normalizer(reference_image)
         src_input = converter.prepare_for_normalizer(source_image_torch)
 
-        # PyTorch backend 
+        # PyTorch backend
         normalizer_pytorch = HistogramMatching(device=cuda_device, backend="pytorch", channel_axis=channel_axis)
         normalizer_pytorch.fit(ref_input)
         result_pytorch = normalizer_pytorch.transform(src_input)
@@ -115,6 +115,7 @@ class TestCUDABackendComparison:
             assert rel_abs_error < 0.01, f"CUDA vs PyTorch histogram matching relative absolute error too large: {rel_abs_error:.6f}, expected <0.01 (channel_axis={channel_axis})"
         except (ImportError, NotImplementedError) as e:
             pytest.skip(f"CUDA backend not available: {e}")
+
 
 if __name__ == "__main__":
     pytest.main()

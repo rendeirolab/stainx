@@ -57,6 +57,7 @@ class NormalizerTemplate(StainNormalizerBase):
         use_cuda_device = False
         try:
             from stainx.backends.cuda_backend import CUDA_AVAILABLE
+
             # Use CUDA device if CUDA is available and device is CUDA
             if CUDA_AVAILABLE and torch.cuda.is_available():
                 if self.device.type == "cuda" or (isinstance(self.device, str) and self.device == "cuda"):
@@ -68,11 +69,11 @@ class NormalizerTemplate(StainNormalizerBase):
                 device = self.device
         except (ImportError, AttributeError):
             device = self.device
-        
+
         # Print backend information
         backend_name = "CUDA" if use_cuda_device else "PyTorch"
         print(f"Using {backend_name} backend for computation (device: {device})")
-        
+
         # Use PyTorch backend (CUDA backends don't have compute_reference methods)
         pytorch_class = self._get_pytorch_class()
         # Allow subclasses to override this to pass extra kwargs (e.g., channel_axis)

@@ -10,8 +10,9 @@
  * This file provides Python bindings for CUDA implementations.
  */
 
-#include <pybind11/pybind11.h>
 #include <torch/extension.h>
+
+#include <pybind11/pybind11.h>
 
 // Forward declarations from CUDA files
 torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor reference_histogram);

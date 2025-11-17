@@ -107,6 +107,4 @@ class MacenkoCUDA(CUDABackendBase):
             raise RuntimeError("stainx_cuda.macenko is not available. The CUDA extension may not be built correctly.")
 
         # Call CUDA implementation
-        result = stainx_cuda.macenko(images, stain_matrix, target_max_conc)
-
-        return result
+        return stainx_cuda.macenko(images, stain_matrix, target_max_conc)

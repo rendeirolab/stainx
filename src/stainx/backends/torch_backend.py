@@ -590,6 +590,4 @@ class MacenkoPyTorch(PyTorchBackendBase):
             od = od_all_images[n]  # (3, H, W)
             normalized[n] = self._process_single_image(od, stain_matrix, target_max_conc, beta, alpha, Io, H, W)
 
-        result = self.preserve_dtype(normalized, original_dtype, was_uint8_or_high_range, result_in_0_255_range=True)
-
-        return result
+        return self.preserve_dtype(normalized, original_dtype, was_uint8_or_high_range, result_in_0_255_range=True)

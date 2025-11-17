@@ -11,8 +11,10 @@
  */
 
 #include <torch/extension.h>
+
 #include <ATen/cuda/CUDAContext.h>
 #include <ATen/cuda/CUDAUtils.h>
+
 #include <cuda_runtime.h>
 #include <limits>
 #include <math.h>
@@ -144,7 +146,7 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
         // Convert RGB to OD
         // Scale to [0, 255] range first (matching PyTorch backend logic)
         torch::Tensor rgb_scaled   = image * 255.0f;  // (3, H, W)
-        torch::Tensor rgb_permuted = rgb_scaled.permute(at::IntArrayRef({1, 2, 0})).contiguous();
+        torch::Tensor rgb_permuted = rgb_scaled.permute(at::IntArrayRef({1, 2, 0}));
         torch::Tensor rgb_flat     = rgb_permuted.reshape({num_pixels, 3});  // (H*W, 3)
         torch::Tensor od_flat      = torch::empty_like(rgb_flat);
 
@@ -252,13 +254,13 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
 
         // Convert OD back to RGB
         // Kernel expects interleaved format (H*W, 3), so transpose od_recon
-        torch::Tensor od_recon_T = od_recon.t().contiguous();  // (H*W, 3)
+        torch::Tensor od_recon_T = od_recon.t();  // (H*W, 3)
         torch::Tensor rgb_recon  = torch::empty_like(od_recon_T);
 
         od_to_rgb_kernel<<<num_blocks, num_threads, 0, stream>>>(od_recon_T.data_ptr<float>(), rgb_recon.data_ptr<float>(), Io, H * W);
 
         // Transpose back to (3, H*W) and reshape to (3, H, W)
-        torch::Tensor rgb_recon_T = rgb_recon.t().contiguous();  // (3, H*W)
+        torch::Tensor rgb_recon_T = rgb_recon.t();  // (3, H*W)
 
         output[n] = rgb_recon_T.view({3, H, W});
     }
