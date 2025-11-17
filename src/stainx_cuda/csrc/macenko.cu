@@ -240,31 +240,15 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
         float max_conc_1       = compute_percentile_cuda(concentrations[1], 99.0f);
         torch::Tensor max_conc = torch::tensor({max_conc_0, max_conc_1}, torch::TensorOptions().device(images_float.device()));
 
-        // Debug: print intermediate values
-        float conc_min = concentrations.min().item<float>();
-        float conc_max = concentrations.max().item<float>();
-        std::cout << "[CUDA macenko] concentrations range: [" << conc_min << ", " << conc_max << "]" << std::endl;
-        std::cout << "[CUDA macenko] max_conc: [" << max_conc_0 << ", " << max_conc_1 << "]" << std::endl;
-        std::cout << "[CUDA macenko] target_max_conc: [" << target_max_conc_flat[0].item<float>() << ", " << target_max_conc_flat[1].item<float>() << "]" << std::endl;
-
         // Normalize concentrations
         torch::Tensor norm_factor         = target_max_conc_flat / max_conc;            // (2,)
         torch::Tensor concentrations_norm = concentrations * norm_factor.unsqueeze(1);  // (2, H*W)
-
-        float conc_norm_min = concentrations_norm.min().item<float>();
-        float conc_norm_max = concentrations_norm.max().item<float>();
-        std::cout << "[CUDA macenko] norm_factor: [" << norm_factor[0].item<float>() << ", " << norm_factor[1].item<float>() << "]" << std::endl;
-        std::cout << "[CUDA macenko] concentrations_norm range: [" << conc_norm_min << ", " << conc_norm_max << "]" << std::endl;
 
         // Reconstruct OD using reference stain matrix
         torch::Tensor od_recon = torch::matmul(stain_matrix, concentrations_norm);  // (3, H*W)
 
         // Clamp negative OD values to 0 (OD must be >= 0)
         od_recon = torch::clamp(od_recon, 0.0f, std::numeric_limits<float>::max());
-
-        float od_recon_min = od_recon.min().item<float>();
-        float od_recon_max = od_recon.max().item<float>();
-        std::cout << "[CUDA macenko] od_recon range (after clamp): [" << od_recon_min << ", " << od_recon_max << "]" << std::endl;
 
         // Convert OD back to RGB
         // Kernel expects interleaved format (H*W, 3), so transpose od_recon
@@ -276,15 +260,7 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
         // Transpose back to (3, H*W) and reshape to (3, H, W)
         torch::Tensor rgb_recon_T = rgb_recon.t().contiguous();  // (3, H*W)
 
-        float rgb_min = rgb_recon_T.min().item<float>();
-        float rgb_max = rgb_recon_T.max().item<float>();
-        std::cout << "[CUDA macenko] rgb_recon (before clamp) range: [" << rgb_min << ", " << rgb_max << "]" << std::endl;
-
         output[n] = rgb_recon_T.view({3, H, W});
-
-        float output_min = output[n].min().item<float>();
-        float output_max = output[n].max().item<float>();
-        std::cout << "[CUDA macenko] output[n] (before final clamp) range: [" << output_min << ", " << output_max << "]" << std::endl;
     }
 
     // Preserve original dtype (matching PyTorch backend's preserve_dtype logic)
