@@ -458,27 +458,18 @@ class MacenkoPyTorch(PyTorchBackendBase):
         max_conc_1 = self._percentile(concentrations[1, :], 99)
         max_conc = torch.stack([torch.tensor(max_conc_0, dtype=torch.float32, device=od.device), torch.tensor(max_conc_1, dtype=torch.float32, device=od.device)])
 
-        print(f"  [MacenkoPyTorch._process_single_image] concentrations range: [{concentrations.min().item():.4f}, {concentrations.max().item():.4f}]")
-        print(f"  [MacenkoPyTorch._process_single_image] max_conc: {max_conc}")
-        print(f"  [MacenkoPyTorch._process_single_image] target_max_conc: {target_max_conc}")
-
         # Normalize concentrations
         norm_factor = target_max_conc / max_conc
-        print(f"  [MacenkoPyTorch._process_single_image] norm_factor: {norm_factor}")
         concentrations_norm = concentrations * norm_factor.unsqueeze(-1)
-        print(f"  [MacenkoPyTorch._process_single_image] concentrations_norm range: [{concentrations_norm.min().item():.4f}, {concentrations_norm.max().item():.4f}]")
 
         # Reconstruct OD
         od_recon = torch.matmul(stain_matrix, concentrations_norm)
         # Clamp negative OD values to 0 (OD must be >= 0)
         od_recon = torch.clamp(od_recon, 0.0, float("inf"))
-        print(f"  [MacenkoPyTorch._process_single_image] od_recon range (after clamp): [{od_recon.min().item():.4f}, {od_recon.max().item():.4f}]")
 
         # Convert back to RGB
         rgb_recon = Io * torch.exp(-od_recon)
-        print(f"  [MacenkoPyTorch._process_single_image] rgb_recon (before clamp) range: [{rgb_recon.min().item():.4f}, {rgb_recon.max().item():.4f}]")
         rgb_recon = torch.clamp(rgb_recon, 0, 255)
-        print(f"  [MacenkoPyTorch._process_single_image] rgb_recon (after clamp) range: [{rgb_recon.min().item():.4f}, {rgb_recon.max().item():.4f}]")
 
         return rgb_recon.reshape(3, H, W)
 
@@ -565,12 +556,6 @@ class MacenkoPyTorch(PyTorchBackendBase):
         return stain_matrix, max_conc
 
     def transform(self, images: torch.Tensor, stain_matrix: torch.Tensor, target_max_conc: torch.Tensor) -> torch.Tensor:
-        print("\n[MacenkoPyTorch.transform] INPUT:")
-        print(f"  images shape: {images.shape}, dtype: {images.dtype}, range: [{images.min().item():.2f}, {images.max().item():.2f}]")
-        print(f"  stain_matrix shape: {stain_matrix.shape}, dtype: {stain_matrix.dtype}")
-        print(f"  stain_matrix:\n{stain_matrix}")
-        print(f"  target_max_conc shape: {target_max_conc.shape}, dtype: {target_max_conc.dtype}, values: {target_max_conc}")
-
         images = images.to(self.device, non_blocking=True)
         stain_matrix = stain_matrix.to(self.device, non_blocking=True)
         target_max_conc = target_max_conc.to(self.device, non_blocking=True)
@@ -579,7 +564,6 @@ class MacenkoPyTorch(PyTorchBackendBase):
         was_uint8_or_high_range = images.dtype == torch.uint8 or images.max() > 1.0
 
         images_float = self.normalize_to_float(images)
-        print(f"  images_float range: [{images_float.min().item():.2f}, {images_float.max().item():.2f}]")
 
         if stain_matrix.shape != (3, 2):
             raise ValueError(f"stain_matrix must have shape (3, 2), got {stain_matrix.shape}")
@@ -607,9 +591,5 @@ class MacenkoPyTorch(PyTorchBackendBase):
             normalized[n] = self._process_single_image(od, stain_matrix, target_max_conc, beta, alpha, Io, H, W)
 
         result = self.preserve_dtype(normalized, original_dtype, was_uint8_or_high_range, result_in_0_255_range=True)
-
-        print("[MacenkoPyTorch.transform] OUTPUT:")
-        print(f"  result shape: {result.shape}, dtype: {result.dtype}, range: [{result.min().item():.2f}, {result.max().item():.2f}]")
-        print(f"  result sample (first 5x5 of channel 0):\n{result[0, 0, :5, :5]}")
 
         return result

@@ -39,10 +39,13 @@ class HistogramMatching(NormalizerTemplate):
                 self._backend_impl = pytorch_class(self.device, channel_axis=self.channel_axis)
         return self._backend_impl
 
+    def _get_backend_kwargs(self) -> dict:
+        """Provide channel_axis for backend initialization."""
+        return {"channel_axis": self.channel_axis}
+
     def _compute_reference_params(self, images: torch.Tensor) -> None:
-        # Use backend to compute reference histograms
-        pytorch_class = self._get_pytorch_class()
-        backend = pytorch_class(self.device)
+        # Automatically use CUDA backend if available, otherwise fall back to PyTorch
+        backend = self._get_backend_for_computation()
         (self._ref_vals, self._ref_cdf, self._ref_histograms_256, self._reference_histogram) = backend.compute_reference_histograms(images)
 
     def _get_reference_params(self) -> tuple:

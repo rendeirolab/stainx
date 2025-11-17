@@ -24,9 +24,8 @@ class Reinhard(NormalizerTemplate):
         return ReinhardPyTorch
 
     def _compute_reference_params(self, images: torch.Tensor) -> None:
-        # Use backend to compute reference mean and std
-        pytorch_class = self._get_pytorch_class()
-        backend = pytorch_class(self.device)
+        # Automatically use CUDA backend if available, otherwise fall back to PyTorch
+        backend = self._get_backend_for_computation()
         self._reference_mean, self._reference_std = backend.compute_reference_mean_std(images)
 
     def _get_reference_params(self) -> tuple:

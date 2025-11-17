@@ -25,9 +25,8 @@ class Macenko(NormalizerTemplate):
         return MacenkoPyTorch
 
     def _compute_reference_params(self, images: torch.Tensor) -> None:
-        # Use backend to compute reference stain matrix
-        pytorch_class = self._get_pytorch_class()
-        backend = pytorch_class(self.device)
+        # Automatically use CUDA backend if available, otherwise fall back to PyTorch
+        backend = self._get_backend_for_computation()
         self._stain_matrix, self._target_max_conc = backend.compute_reference_stain_matrix(images)
         self._concentration_matrix = None
 

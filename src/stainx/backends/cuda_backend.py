@@ -105,12 +105,6 @@ class ReinhardCUDA(CUDABackendBase):
 
 class MacenkoCUDA(CUDABackendBase):
     def transform(self, images: torch.Tensor, stain_matrix: torch.Tensor, target_max_conc: torch.Tensor) -> torch.Tensor:
-        print("\n[MacenkoCUDA.transform] INPUT:")
-        print(f"  images shape: {images.shape}, dtype: {images.dtype}, range: [{images.min().item():.2f}, {images.max().item():.2f}]")
-        print(f"  stain_matrix shape: {stain_matrix.shape}, dtype: {stain_matrix.dtype}")
-        print(f"  stain_matrix:\n{stain_matrix}")
-        print(f"  target_max_conc shape: {target_max_conc.shape}, dtype: {target_max_conc.dtype}, values: {target_max_conc}")
-
         images = images.to(self.device).contiguous()
         stain_matrix = stain_matrix.to(self.device)
         target_max_conc = target_max_conc.to(self.device)
@@ -121,9 +115,5 @@ class MacenkoCUDA(CUDABackendBase):
 
         # Call CUDA implementation
         result = stainx_cuda.macenko(images, stain_matrix, target_max_conc)
-
-        print("[MacenkoCUDA.transform] OUTPUT:")
-        print(f"  result shape: {result.shape}, dtype: {result.dtype}, range: [{result.min().item():.2f}, {result.max().item():.2f}]")
-        print(f"  result sample (first 5x5 of channel 0):\n{result[0, 0, :5, :5]}")
 
         return result

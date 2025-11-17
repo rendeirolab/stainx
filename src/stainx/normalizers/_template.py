@@ -51,6 +51,38 @@ class NormalizerTemplate(StainNormalizerBase):
         backend_impl = self._get_backend_impl()
         return backend_impl.transform(images, *reference_params)
 
+    def _get_backend_for_computation(self):
+        """Get the best available backend for computation (CUDA device if available, else PyTorch)."""
+        # Check if CUDA is available and use CUDA device if possible
+        use_cuda_device = False
+        try:
+            from stainx.backends.cuda_backend import CUDA_AVAILABLE
+            # Use CUDA device if CUDA is available and device is CUDA
+            if CUDA_AVAILABLE and torch.cuda.is_available():
+                if self.device.type == "cuda" or (isinstance(self.device, str) and self.device == "cuda"):
+                    device = torch.device("cuda")
+                    use_cuda_device = True
+                else:
+                    device = self.device
+            else:
+                device = self.device
+        except (ImportError, AttributeError):
+            device = self.device
+        
+        # Print backend information
+        backend_name = "CUDA" if use_cuda_device else "PyTorch"
+        print(f"Using {backend_name} backend for computation (device: {device})")
+        
+        # Use PyTorch backend (CUDA backends don't have compute_reference methods)
+        pytorch_class = self._get_pytorch_class()
+        # Allow subclasses to override this to pass extra kwargs (e.g., channel_axis)
+        kwargs = self._get_backend_kwargs()
+        return pytorch_class(device, **kwargs)
+
+    def _get_backend_kwargs(self) -> dict:
+        """Override in subclasses to provide extra kwargs for backend initialization."""
+        return {}
+
     def _compute_reference_params(self, images: torch.Tensor) -> None:
         raise NotImplementedError("Subclasses must implement _compute_reference_params")
 
