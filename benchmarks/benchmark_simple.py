@@ -26,7 +26,7 @@ def main():
     parser.add_argument("--channels", type=int, default=3, help="Number of channels")
     parser.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "mps", "cuda"], help="Device to use")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--batch-size", type=int, default=16, help="Batch size")
+    parser.add_argument("--batch-size", type=int, default=1024, help="Batch size")
 
     args = parser.parse_args()
 
@@ -92,6 +92,7 @@ def main():
     print(f"Result shape: {result.shape}")
     print(f"Result dtype: {result.dtype}")
     print(f"Time: {elapsed_time:.3f} ms")
+    print(f"Images per second: {args.batch_size * 1000 / elapsed_time:.2f}")
 
 
 if __name__ == "__main__":

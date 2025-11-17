@@ -16,6 +16,7 @@
 #include <ATen/cuda/CUDAUtils.h>
 
 #include <cuda_runtime.h>
+#include <cub/cub.cuh>
 
 #define THREADS_PER_BLOCK 256
 
@@ -39,60 +40,10 @@ __global__ void compute_histogram_kernel(const uint8_t* input, float* histogram,
     }
 }
 
-// Kernel to compute sum reduction for histogram normalization
-__global__ void sum_reduction_kernel(const float* input, float* output, int size) {
-    extern __shared__ float sdata[];
-    int tid = threadIdx.x;
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-    // Load data into shared memory
-    sdata[tid] = (idx < size) ? input[idx] : 0.0f;
-    __syncthreads();
-
-    // Reduction in shared memory
-    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (tid < s) { sdata[tid] += sdata[tid + s]; }
-        __syncthreads();
-    }
-
-    // Write result for this block
-    if (tid == 0) { output[blockIdx.x] = sdata[0]; }
-}
-
-// Kernel to find maximum value (for range checking)
-__global__ void max_reduction_kernel(const float* input, float* output, int size) {
-    extern __shared__ float sdata[];
-    int tid = threadIdx.x;
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-    // Load data into shared memory
-    sdata[tid] = (idx < size) ? input[idx] : -1e10f;
-    __syncthreads();
-
-    // Reduction in shared memory
-    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (tid < s) { sdata[tid] = fmaxf(sdata[tid], sdata[tid + s]); }
-        __syncthreads();
-    }
-
-    // Write result for this block
-    if (tid == 0) { output[blockIdx.x] = sdata[0]; }
-}
-
 // Kernel to normalize histogram (divide by sum)
 __global__ void normalize_histogram_kernel(float* histogram, float sum, int num_bins) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < num_bins) { histogram[idx] = histogram[idx] / (sum + 1e-8f); }
-}
-
-// Kernel to compute CDF (cumulative sum)
-__global__ void compute_cdf_kernel(const float* histogram, float* cdf, int num_bins) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < num_bins) {
-        float sum = 0.0f;
-        for (int i = 0; i <= idx; i++) { sum += histogram[i]; }
-        cdf[idx] = sum;
-    }
 }
 
 // Kernel to build lookup table from source and reference CDFs
@@ -181,14 +132,11 @@ __global__ void process_channel_kernel(
     const uint8_t* images_uint8,           // Input images (N*C*H*W, channels interleaved)
     float* output,                          // Output images (N*C*H*W, channels interleaved)
     const float* ref_hist,                  // Reference histogram(s): (C, 256) or (256,)
-    float* channel_buffers,                 // Per-channel buffers: (C, 3*num_bins) for hist, cdf, lookup
-    float* reduction_buffers,              // Per-channel reduction buffers: (C, max_reduction_size)
+    float* channel_buffers,                 // Per-channel buffers: (C, 4*num_bins) for hist, cdf, ref_cdf, lookup
     int N, int C, int H, int W,             // Image dimensions
     int num_bins,                           // Number of histogram bins (256)
     int total_pixels_per_channel,           // N * H * W
-    bool per_channel_histograms,            // Whether ref_hist is per-channel
-    int num_blocks_bins,                    // Number of blocks for bin operations
-    int max_reduction_size                  // Size of reduction buffer
+    bool per_channel_histograms             // Whether ref_hist is per-channel
 ) {
     // Each block processes one channel
     int channel_idx = blockIdx.x;
@@ -207,7 +155,6 @@ __global__ void process_channel_kernel(
     float* source_cdf = channel_buffers + buffer_offset + num_bins;
     float* ref_cdf_channel = channel_buffers + buffer_offset + 2 * num_bins;  // Temporary for per-channel case
     float* lookup_table = channel_buffers + buffer_offset + 3 * num_bins;
-    float* sum_buffer = reduction_buffers + channel_idx * max_reduction_size;
     
     // Get reference CDF pointer
     const float* ref_cdf_ptr;
@@ -223,24 +170,18 @@ __global__ void process_channel_kernel(
         }
         __syncthreads();
         
-        // Compute sum of reference histogram
-        float ref_sum = 0.0f;
-        for (int i = threadIdx.x; i < num_bins; i += blockDim.x) {
-            ref_sum += ref_hist_channel[i];
-        }
-        // Reduce within block using shared memory
-        extern __shared__ float sdata[];
-        sdata[threadIdx.x] = ref_sum;
-        __syncthreads();
-        for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-            if (threadIdx.x < s) {
-                sdata[threadIdx.x] += sdata[threadIdx.x + s];
+        // Compute sum of reference histogram (sequential for correctness with 256 elements)
+        // For small arrays, sequential is fast and guaranteed correct
+        __shared__ float ref_sum_shared;
+        if (threadIdx.x == 0) {
+            float sum = 0.0f;
+            for (int i = 0; i < num_bins; i++) {
+                sum += ref_hist_channel[i];
             }
-            __syncthreads();
+            ref_sum_shared = sum;
         }
-        // Broadcast sum to all threads - all threads read from shared memory
         __syncthreads();
-        ref_sum = sdata[0];
+        float ref_sum = ref_sum_shared;
         
         // Normalize reference histogram
         float inv_sum = 1.0f / (ref_sum + 1e-8f);
@@ -249,7 +190,8 @@ __global__ void process_channel_kernel(
         }
         __syncthreads();
         
-        // Compute reference CDF (prefix sum - must be sequential)
+        // Compute reference CDF (prefix sum - sequential for correctness)
+        // For 256 elements, sequential is fast and guaranteed correct
         if (threadIdx.x == 0) {
             float sum = 0.0f;
             for (int i = 0; i < num_bins; i++) {
@@ -294,7 +236,8 @@ __global__ void process_channel_kernel(
     }
     __syncthreads();
     
-    // Compute source CDF (prefix sum)
+    // Compute source CDF (prefix sum - sequential for correctness)
+    // For 256 elements, sequential is fast and guaranteed correct
     if (threadIdx.x == 0) {
         float sum = 0.0f;
         for (int i = 0; i < num_bins; i++) {
@@ -387,6 +330,7 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
     int W                        = input_images.size(3);
     int num_bins                 = 256;
     int total_pixels_per_channel = N * H * W;
+    int num_threads              = THREADS_PER_BLOCK;
 
     // Check input range and convert to uint8 if needed
     torch::Tensor images_uint8;
@@ -394,38 +338,30 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
         images_uint8            = input_images.contiguous();
         was_uint8_or_high_range = true;
     } else {
-        // Check if input is in [0, 1] range using max reduction
+        // Check if input is in [0, 1] range using CUB max reduction
         torch::Tensor input_flat = input_images.contiguous().view(-1);
         int num_elements         = input_flat.numel();
 
-        // Use max reduction to find max value
-        int num_threads = THREADS_PER_BLOCK;
-        int num_blocks  = (num_elements + num_threads - 1) / num_threads;
-        int smem_size   = num_threads * sizeof(float);
-
-        // Allocate temporary buffer for reduction
-        torch::Tensor max_buffer = torch::empty({num_blocks}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
-
-        max_reduction_kernel<<<num_blocks, num_threads, smem_size, stream>>>(input_flat.data_ptr<float>(), max_buffer.data_ptr<float>(), num_elements);
-
-        // Final reduction if needed (for large arrays)
+        // Use CUB DeviceReduce::Max to find max value
+        void* d_temp_storage = nullptr;
+        size_t temp_storage_bytes = 0;
         float max_val = 0.0f;
+
+        // Determine temporary storage requirements
+        cub::DeviceReduce::Max(d_temp_storage, temp_storage_bytes, input_flat.data_ptr<float>(), &max_val, num_elements, stream);
+
+        // Allocate temporary storage
+        cudaMalloc(&d_temp_storage, temp_storage_bytes);
+
+        // Run max reduction
+        cub::DeviceReduce::Max(d_temp_storage, temp_storage_bytes, input_flat.data_ptr<float>(), &max_val, num_elements, stream);
+        
+        // Synchronize to ensure max is computed (DeviceReduce writes to host pointer)
         cudaStreamSynchronize(stream);
-        if (num_blocks > 1) {
-            // Recursive reduction until we have a small enough array
-            torch::Tensor current = max_buffer;
-            int current_size      = num_blocks;
-            while (current_size > 1) {
-                int next_blocks    = (current_size + num_threads - 1) / num_threads;
-                torch::Tensor next = torch::empty({next_blocks}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
-                max_reduction_kernel<<<next_blocks, num_threads, smem_size, stream>>>(current.data_ptr<float>(), next.data_ptr<float>(), current_size);
-                cudaStreamSynchronize(stream);
-                current      = next;
-                current_size = next_blocks;
-            }
-            max_val = current.item<float>();
-        } else {
-            max_val = max_buffer.item<float>();
+
+        // Free temporary storage
+        if (d_temp_storage != nullptr) {
+            cudaFree(d_temp_storage);
         }
 
         // Determine if we need to scale
@@ -438,7 +374,7 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
         // Convert to uint8 using CUDA kernel
         images_uint8     = torch::empty({N, C, H, W}, torch::TensorOptions().dtype(torch::kUInt8).device(input_images.device()));
         int total_pixels = N * C * H * W;
-        num_blocks       = (total_pixels + num_threads - 1) / num_threads;
+        int num_blocks   = (total_pixels + num_threads - 1) / num_threads;
 
         convert_to_uint8_kernel<<<num_blocks, num_threads, 0, stream>>>(input_flat.data_ptr<float>(), images_uint8.data_ptr<uint8_t>(), needs_scale_back, total_pixels);
     }
@@ -461,48 +397,53 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
         TORCH_CHECK(false, "reference_histogram must be 1D with 256 elements or 2D with shape (C, 256)");
     }
 
-    // Pre-compute reference CDFs on GPU
+    // Pre-compute reference CDFs on GPU using CUB
     torch::Tensor ref_cdf;
     if (!per_channel_histograms) {
-        // Single reference histogram - normalize and compute CDF on GPU
+        // Single reference histogram - normalize and compute CDF on GPU using CUB
         ref_cdf = torch::empty({num_bins}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
 
-        // Compute sum using reduction
-        int num_threads          = THREADS_PER_BLOCK;
-        int num_blocks           = (num_bins + num_threads - 1) / num_threads;
-        int smem_size            = num_threads * sizeof(float);
-        torch::Tensor sum_buffer = torch::empty({num_blocks}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
-
-        sum_reduction_kernel<<<num_blocks, num_threads, smem_size, stream>>>(ref_hist.data_ptr<float>(), sum_buffer.data_ptr<float>(), num_bins);
-
-        // Final reduction if needed
+        // Compute sum using CUB DeviceReduce::Sum
+        void* d_temp_storage = nullptr;
+        size_t temp_storage_bytes = 0;
         float ref_sum = 0.0f;
+
+        // Determine temporary storage requirements for sum
+        cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, ref_hist.data_ptr<float>(), &ref_sum, num_bins, stream);
+
+        // Allocate temporary storage
+        cudaMalloc(&d_temp_storage, temp_storage_bytes);
+
+        // Run sum reduction
+        cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, ref_hist.data_ptr<float>(), &ref_sum, num_bins, stream);
+        
+        // Synchronize to ensure sum is computed (DeviceReduce writes to host pointer)
         cudaStreamSynchronize(stream);
-        if (num_blocks > 1) {
-            // Recursive reduction until we have a small enough array
-            torch::Tensor current = sum_buffer;
-            int current_size      = num_blocks;
-            while (current_size > 1) {
-                int next_blocks    = (current_size + num_threads - 1) / num_threads;
-                torch::Tensor next = torch::empty({next_blocks}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
-                sum_reduction_kernel<<<next_blocks, num_threads, smem_size, stream>>>(current.data_ptr<float>(), next.data_ptr<float>(), current_size);
-                cudaStreamSynchronize(stream);
-                current      = next;
-                current_size = next_blocks;
-            }
-            ref_sum = current.item<float>();
-        } else {
-            ref_sum = sum_buffer.item<float>();
-        }
 
         // Normalize histogram (copy first to avoid modifying original)
         torch::Tensor ref_hist_norm = torch::empty_like(ref_hist);
         cudaMemcpyAsync(ref_hist_norm.data_ptr<float>(), ref_hist.data_ptr<float>(), num_bins * sizeof(float), cudaMemcpyDeviceToDevice, stream);
-        num_blocks = (num_bins + num_threads - 1) / num_threads;
+        int num_threads = THREADS_PER_BLOCK;
+        int num_blocks = (num_bins + num_threads - 1) / num_threads;
         normalize_histogram_kernel<<<num_blocks, num_threads, 0, stream>>>(ref_hist_norm.data_ptr<float>(), ref_sum, num_bins);
 
-        // Compute CDF
-        compute_cdf_kernel<<<num_blocks, num_threads, 0, stream>>>(ref_hist_norm.data_ptr<float>(), ref_cdf.data_ptr<float>(), num_bins);
+        // Compute CDF using CUB DeviceScan::InclusiveSum
+        // Determine temporary storage requirements for scan
+        cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes, ref_hist_norm.data_ptr<float>(), ref_cdf.data_ptr<float>(), num_bins, stream);
+
+        // Reallocate if needed (scan might need more storage)
+        cudaFree(d_temp_storage);
+        if (temp_storage_bytes > 0) {
+            cudaMalloc(&d_temp_storage, temp_storage_bytes);
+        }
+
+        // Run inclusive scan (prefix sum)
+        cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes, ref_hist_norm.data_ptr<float>(), ref_cdf.data_ptr<float>(), num_bins, stream);
+
+        // Free temporary storage
+        if (d_temp_storage != nullptr) {
+            cudaFree(d_temp_storage);
+        }
     }
 
     // Allocate output tensor
@@ -511,15 +452,9 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
     // Pre-allocate per-channel buffers for parallel processing
     // Each channel needs: source_hist (num_bins), source_cdf (num_bins), ref_cdf_channel (num_bins, for per-channel case), lookup_table (num_bins)
     // Total: C * 4 * num_bins
-    int num_threads     = THREADS_PER_BLOCK;
-    int num_blocks_bins = (num_bins + num_threads - 1) / num_threads;
-    int max_reduction_size = (num_blocks_bins > 1) ? num_blocks_bins : 1;
     
     // Per-channel buffers: (C, 4*num_bins) - for hist, cdf, ref_cdf (temp), lookup_table
     torch::Tensor channel_buffers = torch::empty({C, 4 * num_bins}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
-    
-    // Per-channel reduction buffers: (C, max_reduction_size)
-    torch::Tensor reduction_buffers = torch::empty({C, max_reduction_size}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
     
     // Prepare reference data pointer
     const float* ref_data_ptr;
@@ -532,21 +467,20 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
     }
 
     // Launch parallel kernel: one block per channel
+    // Minimal shared memory needed (just for sum broadcast)
+    size_t shared_mem_size = sizeof(float);  // For ref_sum_shared
+    
     int threads_per_block = THREADS_PER_BLOCK;
-    int shared_mem_size = threads_per_block * sizeof(float);  // For reduction operations
     
     process_channel_kernel<<<C, threads_per_block, shared_mem_size, stream>>>(
         images_uint8.data_ptr<uint8_t>(),
         output.data_ptr<float>(),
         ref_data_ptr,
         channel_buffers.data_ptr<float>(),
-        reduction_buffers.data_ptr<float>(),
         N, C, H, W,
         num_bins,
         total_pixels_per_channel,
-        per_channel_histograms,
-        num_blocks_bins,
-        max_reduction_size
+        per_channel_histograms
     );
 
     // Scale and clamp output
