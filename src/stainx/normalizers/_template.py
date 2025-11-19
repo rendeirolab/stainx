@@ -20,6 +20,12 @@ class NormalizerTemplate(StainNormalizerBase):
         pass
 
     def _select_backend(self) -> str:
+        try:
+            from stainx.backends.cuda_backend import CUDA_AVAILABLE
+            if CUDA_AVAILABLE and torch.cuda.is_available() and self.device.type == "cuda":
+                return "cuda"
+        except (ImportError, AttributeError):
+            pass
         return "pytorch"
 
     def _get_backend_impl(self):
@@ -62,18 +68,13 @@ class NormalizerTemplate(StainNormalizerBase):
             if CUDA_AVAILABLE and torch.cuda.is_available():
                 if self.device.type == "cuda" or (isinstance(self.device, str) and self.device == "cuda"):
                     device = torch.device("cuda")
-                    use_cuda_device = True
                 else:
                     device = self.device
             else:
                 device = self.device
         except (ImportError, AttributeError):
             device = self.device
-
-        # Print backend information
-        backend_name = "CUDA" if use_cuda_device else "PyTorch"
-        print(f"Using {backend_name} backend for computation (device: {device})")
-
+        
         # Use PyTorch backend (CUDA backends don't have compute_reference methods)
         pytorch_class = self._get_pytorch_class()
         # Allow subclasses to override this to pass extra kwargs (e.g., channel_axis)

@@ -21,12 +21,13 @@ from stainx.utils import ChannelFormatConverter
 def main():
     parser = argparse.ArgumentParser(description="Simple benchmark for a single StainX method")
     parser.add_argument("method", type=str, choices=["reinhard", "macenko", "histogram_matching"], help="StainX method to benchmark")
+    parser.add_argument("--batch-size", type=int, default=128, help="Batch size")
     parser.add_argument("--height", type=int, default=256, help="Image height")
     parser.add_argument("--width", type=int, default=256, help="Image width")
     parser.add_argument("--channels", type=int, default=3, help="Number of channels")
     parser.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "mps", "cuda"], help="Device to use")
+    parser.add_argument("--runs", type=int, default=10, help="Number of runs")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--batch-size", type=int, default=1024, help="Batch size")
 
     args = parser.parse_args()
 
@@ -84,10 +85,11 @@ def main():
     # Run transform once
     print("Running transform...")
     start_time = time.time()
-    result = normalizer.transform(source_image)
+    for _ in range(args.runs):
+        result = normalizer.transform(source_image)
     if device == "cuda":
         torch.cuda.synchronize()
-    elapsed_time = (time.time() - start_time) * 1000
+    elapsed_time = ((time.time() - start_time) * 1000) / args.runs
 
     print(f"Result shape: {result.shape}")
     print(f"Result dtype: {result.dtype}")
