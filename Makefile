@@ -86,21 +86,6 @@ test:
 		LD_LIBRARY_PATH="$$TORCH_LIB_PATH:$$LD_LIBRARY_PATH" $(PYTEST) tests/ -v; \
 	fi
 
-# Run tests with coverage
-test-cov:
-	@echo "Running tests with coverage..."
-	@if [ ! -d ".venv" ]; then \
-		echo "Virtual environment not found. Running 'make build' first..."; \
-		$(MAKE) build; \
-	fi
-	@TORCH_LIB_PATH=$$($(PYTHON) -c 'import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), "lib"))' 2>/dev/null); \
-	if [ -z "$$TORCH_LIB_PATH" ] || [ ! -d "$$TORCH_LIB_PATH" ]; then \
-		echo "Warning: Could not find PyTorch library path, tests may fail if CUDA extension is used"; \
-		$(PYTEST) tests/ -v --cov=src/stainx --cov-report=term-missing --cov-report=html; \
-	else \
-		LD_LIBRARY_PATH="$$TORCH_LIB_PATH:$$LD_LIBRARY_PATH" $(PYTEST) tests/ -v --cov=src/stainx --cov-report=term-missing --cov-report=html; \
-	fi
-
 # Check code for linting issues
 lint:
 	@echo "Checking code for linting issues..."
