@@ -11,110 +11,134 @@ import os
 import re
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 import torch
 import torch.utils.cpp_extension as torch_cpp_ext
 from setuptools import setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
-if not torch.cuda.is_available():
-    print("CUDA not available. Skipping CUDA extension build.")
-    sys.exit(0)
 
-print("Building CUDA extension...")
+class CUDADeviceInfo:
+    """Handles CUDA device detection and information retrieval."""
 
-project_root = Path(__file__).parent
-csrc_dir = project_root / "src" / "stainx_cuda" / "csrc"
+    def __init__(self):
+        if not torch.cuda.is_available():
+            print("CUDA not available. Skipping CUDA extension build.")
+            sys.exit(0)
 
-# Get current device info
-device = torch.cuda.current_device()
-device_name = torch.cuda.get_device_name(device)
-device_capability = torch.cuda.get_device_capability(device)
-print(f"Current device: {device_name}")
-print(f"Current CUDA capability: {device_capability}")
+        self.device = torch.cuda.current_device()
+        self.device_name = torch.cuda.get_device_name(self.device)
+        self.device_capability = torch.cuda.get_device_capability(self.device)
+        self.compute_capability = self._detect_compute_capability()
 
+    def _detect_compute_capability(self):
+        """Detect compute capability from current device."""
+        major, minor = torch.cuda.get_device_capability(self.device)
+        return major * 10 + minor
 
-# Detect compute capability
-def detect_cc():
-    dev = torch.cuda.current_device()
-    major, minor = torch.cuda.get_device_capability(dev)
-    return major * 10 + minor
-
-
-cc = detect_cc()
-print(f"Detected compute capability: {cc}")
-
-
-# Remove unwanted PyTorch NVCC flags
-def remove_unwanted_pytorch_nvcc_flags():
-    REMOVE_NVCC_FLAGS = ["-D__CUDA_NO_HALF_OPERATORS__", "-D__CUDA_NO_HALF_CONVERSIONS__", "-D__CUDA_NO_BFLOAT16_CONVERSIONS__", "-D__CUDA_NO_HALF2_OPERATORS__"]
-    for flag in REMOVE_NVCC_FLAGS:
-        with contextlib.suppress(ValueError):
-            torch_cpp_ext.COMMON_NVCC_FLAGS.remove(flag)
+    def print_info(self):
+        """Print device information."""
+        print("Building CUDA extension...")
+        print(f"Current device: {self.device_name}")
+        print(f"Current CUDA capability: {self.device_capability}")
+        print(f"Detected compute capability: {self.compute_capability}")
 
 
-# Get CUDA architecture flags
-def get_cuda_arch_flags():
-    flags = ["--expt-relaxed-constexpr", "--use_fast_math", "-std=c++17", "-O3", "-DNDEBUG", "-Xcompiler", "-funroll-loops", "-Xcompiler", "-ffast-math", "-Xcompiler", "-finline-functions"]
+class PyTorchVersionChecker:
+    """Handles PyTorch version checking and validation."""
 
-    # Add architecture-specific flags
-    # Support for newer architectures (compute capability >= 10.0)
-    if cc >= 100:
-        # Add support for the detected architecture
-        compute_arch = f"compute_{cc // 10}{cc % 10}"
-        sm_arch = f"sm_{cc // 10}{cc % 10}"
+    MIN_MAJOR = 2
+    MIN_MINOR = 0
+
+    def __init__(self):
+        self.version = torch.__version__
+        self.major, self.minor = self._parse_version()
+
+    def _parse_version(self):
+        """Parse PyTorch version string."""
+        m = re.match(r"^(\d+)\.(\d+)", self.version)
+        if not m:
+            raise RuntimeError(f"Cannot parse PyTorch version '{self.version}'")
+        return tuple(map(int, m.groups()))
+
+    def check(self):
+        """Check if PyTorch version meets requirements."""
+        print(f"PyTorch version: {self.version}")
+        if self.major < self.MIN_MAJOR or (self.major == self.MIN_MAJOR and self.minor < self.MIN_MINOR):
+            print(f"Warning: PyTorch version {self.version} may not be fully supported. Recommended: >= {self.MIN_MAJOR}.{self.MIN_MINOR}")
+
+
+class NVCCFlagsManager:
+    """Manages NVCC compilation flags."""
+
+    UNWANTED_FLAGS: ClassVar[list[str]] = ["-D__CUDA_NO_HALF_OPERATORS__", "-D__CUDA_NO_HALF_CONVERSIONS__", "-D__CUDA_NO_BFLOAT16_CONVERSIONS__", "-D__CUDA_NO_HALF2_OPERATORS__"]
+
+    BASE_FLAGS: ClassVar[list[str]] = ["--expt-relaxed-constexpr", "--use_fast_math", "-std=c++17", "-O3", "-DNDEBUG", "-Xcompiler", "-funroll-loops", "-Xcompiler", "-ffast-math", "-Xcompiler", "-finline-functions"]
+
+    def __init__(self):
+        self._remove_unwanted_flags()
+
+    def _remove_unwanted_flags(self):
+        """Remove unwanted PyTorch NVCC flags."""
+        for flag in self.UNWANTED_FLAGS:
+            with contextlib.suppress(ValueError):
+                torch_cpp_ext.COMMON_NVCC_FLAGS.remove(flag)
+
+    def get_architecture_flags(self, compute_capability):
+        """Generate architecture-specific flags for the given compute capability."""
+        flags = self.BASE_FLAGS.copy()
+
+        # Format: compute_XX and sm_XX
+        major = compute_capability // 10
+        minor = compute_capability % 10
+        compute_arch = f"compute_{major}{minor}"
+        sm_arch = f"sm_{major}{minor}"
+
         flags.extend(["-gencode", f"arch={compute_arch},code={sm_arch}"])
-
-        # Also add support for common newer architectures (for compatibility)
-        # Only add if different from detected arch to avoid duplicates
-        if cc >= 120:
-            if cc != 120:
-                flags.extend(["-gencode", "arch=compute_120,code=sm_120"])
-            if cc >= 100 and cc != 100:
-                flags.extend(["-gencode", "arch=compute_100,code=sm_100"])
-        elif cc >= 100:
-            if cc != 100:
-                flags.extend(["-gencode", "arch=compute_100,code=sm_100"])
-    else:
-        # For older architectures, add common ones
-        if cc >= 75:
-            flags.extend(["-gencode", "arch=compute_75,code=sm_75"])
-        if cc >= 80:
-            flags.extend(["-gencode", "arch=compute_80,code=sm_80"])
-        if cc >= 86:
-            flags.extend(["-gencode", "arch=compute_86,code=sm_86"])
-
-    return flags
+        return flags
 
 
-# Check PyTorch version
-torch_version = torch.__version__
-print(f"PyTorch version: {torch_version}")
-m = re.match(r"^(\d+)\.(\d+)", torch_version)
-if not m:
-    raise RuntimeError(f"Cannot parse PyTorch version '{torch_version}'")
-major, minor = map(int, m.groups())
-if major < 2 or (major == 2 and minor < 0):
-    print(f"Warning: PyTorch version {torch_version} may not be fully supported. Recommended: >= 2.0")
+class CUDAExtensionBuilder:
+    """Builds and configures the CUDA extension."""
 
-# Remove unwanted flags
-remove_unwanted_pytorch_nvcc_flags()
+    def __init__(self, project_root: Path):
+        self.project_root = project_root
+        self.csrc_dir = project_root / "src" / "stainx_cuda" / "csrc"
+        self.device_info = CUDADeviceInfo()
+        self.version_checker = PyTorchVersionChecker()
+        self.flags_manager = NVCCFlagsManager()
 
-# Get CUDA architecture flags
-nvcc_flags = get_cuda_arch_flags()
+    def build(self):
+        """Build the CUDA extension configuration."""
+        # Print device and version info
+        self.device_info.print_info()
+        self.version_checker.check()
 
-extensions = [
-    CUDAExtension(
-        name="stainx_cuda",
-        sources=[str(csrc_dir / "bindings.cpp"), str(csrc_dir / "histogram_matching.cu"), str(csrc_dir / "reinhard.cu"), str(csrc_dir / "macenko.cu")],
-        include_dirs=[str(csrc_dir)],
-        define_macros=[("TARGET_CUDA_ARCH", str(cc))],
-        extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags},
-        extra_link_args=["-lcudart", "-lcublas", "-lcusolver"],
-    )
-]
+        # Get architecture flags
+        nvcc_flags = self.flags_manager.get_architecture_flags(self.device_info.compute_capability)
 
-# Enable ninja for faster builds (requires ninja to be installed)
-use_ninja = os.environ.get("USE_NINJA", "true").lower() == "true"
+        # Define source files
+        sources = [str(self.csrc_dir / "bindings.cpp"), str(self.csrc_dir / "histogram_matching.cu"), str(self.csrc_dir / "reinhard.cu"), str(self.csrc_dir / "macenko.cu")]
 
-setup(name="stainx-cuda", ext_modules=extensions, cmdclass={"build_ext": BuildExtension.with_options(use_ninja=use_ninja)}, zip_safe=False)
+        # Create extension
+        extension = CUDAExtension(
+            name="stainx_cuda", sources=sources, include_dirs=[str(self.csrc_dir)], define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))], extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags}, extra_link_args=["-lcudart", "-lcublas", "-lcusolver"]
+        )
+
+        return [extension]
+
+    def get_build_ext_class(self):
+        """Get the build extension class with ninja support."""
+        use_ninja = os.environ.get("USE_NINJA", "true").lower() == "true"
+        return BuildExtension.with_options(use_ninja=use_ninja)
+
+
+# Main setup execution
+project_root = Path(__file__).parent
+builder = CUDAExtensionBuilder(project_root)
+
+extensions = builder.build()
+build_ext = builder.get_build_ext_class()
+
+setup(name="stainx-cuda", ext_modules=extensions, cmdclass={"build_ext": build_ext}, zip_safe=False)
