@@ -17,7 +17,6 @@ help:
 	@echo "  make build      - Build the package (includes CUDA extension if available)"
 	@echo "  make clean      - Clean build artifacts and cache files"
 	@echo "  make test       - Run tests"
-	@echo "  make install    - Install package in editable mode"
 	@echo "  make lint       - Check code for linting issues"
 	@echo "  make fix        - Auto-fix linting issues and format code"
 
