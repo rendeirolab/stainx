@@ -12,6 +12,7 @@ class NormalizerTemplate(StainNormalizerBase):
     def __init__(self, device: str | torch.device | None = None, backend: str | None = None):
         super().__init__(device)
         self.backend = backend or self._select_backend()
+        print(f"Backend selected: {self.backend}")
         self._backend_impl = None
 
         self._init_algorithm_attributes()
@@ -22,6 +23,7 @@ class NormalizerTemplate(StainNormalizerBase):
     def _select_backend(self) -> str:
         try:
             from stainx.backends.cuda_backend import CUDA_AVAILABLE
+
             if CUDA_AVAILABLE and torch.cuda.is_available() and self.device.type == "cuda":
                 return "cuda"
         except (ImportError, AttributeError):
@@ -60,21 +62,14 @@ class NormalizerTemplate(StainNormalizerBase):
     def _get_backend_for_computation(self):
         """Get the best available backend for computation (CUDA device if available, else PyTorch)."""
         # Check if CUDA is available and use CUDA device if possible
-        use_cuda_device = False
         try:
             from stainx.backends.cuda_backend import CUDA_AVAILABLE
 
             # Use CUDA device if CUDA is available and device is CUDA
-            if CUDA_AVAILABLE and torch.cuda.is_available():
-                if self.device.type == "cuda" or (isinstance(self.device, str) and self.device == "cuda"):
-                    device = torch.device("cuda")
-                else:
-                    device = self.device
-            else:
-                device = self.device
+            device = (torch.device("cuda") if self.device.type == "cuda" or (isinstance(self.device, str) and self.device == "cuda") else self.device) if CUDA_AVAILABLE and torch.cuda.is_available() else self.device
         except (ImportError, AttributeError):
             device = self.device
-        
+
         # Use PyTorch backend (CUDA backends don't have compute_reference methods)
         pytorch_class = self._get_pytorch_class()
         # Allow subclasses to override this to pass extra kwargs (e.g., channel_axis)

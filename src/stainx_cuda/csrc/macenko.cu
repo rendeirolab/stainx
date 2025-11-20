@@ -517,7 +517,7 @@ __global__ void compute_minmax_kernel(const float* data, int n, float* min_val, 
     __shared__ float shared_min[THREADS_PER_BLOCK / WARP_SIZE];
     __shared__ float shared_max[THREADS_PER_BLOCK / WARP_SIZE];
 
-    int tid = threadIdx.x;
+    int tid         = threadIdx.x;
     float local_min = INFINITY;
     float local_max = -INFINITY;
 
@@ -532,8 +532,8 @@ __global__ void compute_minmax_kernel(const float* data, int n, float* min_val, 
     for (int offset = WARP_SIZE / 2; offset > 0; offset /= 2) {
         float other_min = __shfl_down_sync(0xffffffff, local_min, offset);
         float other_max = __shfl_down_sync(0xffffffff, local_max, offset);
-        local_min = fminf(local_min, other_min);
-        local_max = fmaxf(local_max, other_max);
+        local_min       = fminf(local_min, other_min);
+        local_max       = fmaxf(local_max, other_max);
     }
 
     // First thread in each warp writes to shared memory
@@ -557,13 +557,13 @@ __global__ void compute_minmax_kernel(const float* data, int n, float* min_val, 
         for (int offset = WARP_SIZE / 2; offset > 0; offset /= 2) {
             float other_min = __shfl_down_sync(0xffffffff, local_min, offset);
             float other_max = __shfl_down_sync(0xffffffff, local_max, offset);
-            local_min = fminf(local_min, other_min);
-            local_max = fmaxf(local_max, other_max);
+            local_min       = fminf(local_min, other_min);
+            local_max       = fmaxf(local_max, other_max);
         }
 
         if (tid == 0) {
-            atomicMin((int*)min_val, __float_as_int(local_min));
-            atomicMax((int*)max_val, __float_as_int(local_max));
+            atomicMin((int*) min_val, __float_as_int(local_min));
+            atomicMax((int*) max_val, __float_as_int(local_max));
         }
     }
 }
@@ -571,20 +571,18 @@ __global__ void compute_minmax_kernel(const float* data, int n, float* min_val, 
 // GPU kernel to build histogram
 __global__ void build_histogram_kernel(const float* data, int n, float min_val, float max_val, int* histogram, int num_bins) {
     __shared__ int shared_hist[1024];  // Support up to 1024 bins
-    
+
     // Initialize shared histogram
-    for (int i = threadIdx.x; i < num_bins; i += blockDim.x) {
-        shared_hist[i] = 0;
-    }
+    for (int i = threadIdx.x; i < num_bins; i += blockDim.x) { shared_hist[i] = 0; }
     __syncthreads();
 
     // Build histogram in shared memory
     float range = max_val - min_val;
     if (range < 1e-10f) range = 1e-10f;
-    
+
     for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n; i += blockDim.x * gridDim.x) {
         float val = data[i];
-        int bin = (int)((val - min_val) / range * num_bins);
+        int bin   = (int) ((val - min_val) / range * num_bins);
         if (bin < 0) bin = 0;
         if (bin >= num_bins) bin = num_bins - 1;
         atomicAdd(&shared_hist[bin], 1);
@@ -592,18 +590,16 @@ __global__ void build_histogram_kernel(const float* data, int n, float min_val, 
     __syncthreads();
 
     // Write shared histogram to global memory
-    for (int i = threadIdx.x; i < num_bins; i += blockDim.x) {
-        atomicAdd(&histogram[i], shared_hist[i]);
-    }
+    for (int i = threadIdx.x; i < num_bins; i += blockDim.x) { atomicAdd(&histogram[i], shared_hist[i]); }
 }
 
 // GPU kernel to find percentile from histogram
 __global__ void find_percentile_from_histogram_kernel(const int* histogram, int num_bins, float min_val, float max_val, int n, float percentile, float* result) {
     if (threadIdx.x == 0 && blockIdx.x == 0) {
-        int target_count = (int)(percentile / 100.0f * (n - 1) + 1);
-        int cumsum = 0;
-        int bin = 0;
-        
+        int target_count = (int) (percentile / 100.0f * (n - 1) + 1);
+        int cumsum       = 0;
+        int bin          = 0;
+
         for (int i = 0; i < num_bins; i++) {
             cumsum += histogram[i];
             if (cumsum >= target_count) {
@@ -611,48 +607,48 @@ __global__ void find_percentile_from_histogram_kernel(const int* histogram, int 
                 break;
             }
         }
-        
+
         // Interpolate within bin
-        float range = max_val - min_val;
+        float range     = max_val - min_val;
         float bin_width = range / num_bins;
-        *result = min_val + (bin + 0.5f) * bin_width;
+        *result         = min_val + (bin + 0.5f) * bin_width;
     }
 }
 
 // GPU-based percentile computation using histogram method
 void compute_percentile_gpu(const float* data_device, int n, float percentile, float* result_device, cudaStream_t stream = 0) {
-    const int num_bins = 1024;
+    const int num_bins    = 1024;
     const int num_threads = THREADS_PER_BLOCK;
-    const int num_blocks = min(256, (n + num_threads - 1) / num_threads);
+    const int num_blocks  = min(256, (n + num_threads - 1) / num_threads);
 
     // Allocate temporary buffers
     float *min_val_device, *max_val_device;
-    int *histogram_device;
-    
+    int* histogram_device;
+
     cudaMalloc(&min_val_device, sizeof(float));
     cudaMalloc(&max_val_device, sizeof(float));
     cudaMalloc(&histogram_device, num_bins * sizeof(int));
-    
+
     // Initialize min/max
     float init_min = INFINITY;
     float init_max = -INFINITY;
     cudaMemcpy(min_val_device, &init_min, sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(max_val_device, &init_max, sizeof(float), cudaMemcpyHostToDevice);
     cudaMemset(histogram_device, 0, num_bins * sizeof(int));
-    
+
     // Compute min/max
     compute_minmax_kernel<<<num_blocks, num_threads, 0, stream>>>(data_device, n, min_val_device, max_val_device);
-    
+
     // Build histogram
     float min_val_host, max_val_host;
     cudaMemcpy(&min_val_host, min_val_device, sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(&max_val_host, max_val_device, sizeof(float), cudaMemcpyDeviceToHost);
-    
+
     build_histogram_kernel<<<num_blocks, num_threads, 0, stream>>>(data_device, n, min_val_host, max_val_host, histogram_device, num_bins);
-    
+
     // Find percentile
     find_percentile_from_histogram_kernel<<<1, 1, 0, stream>>>(histogram_device, num_bins, min_val_host, max_val_host, n, percentile, result_device);
-    
+
     // Cleanup
     cudaFree(min_val_device);
     cudaFree(max_val_device);
@@ -663,26 +659,24 @@ void compute_percentile_gpu(const float* data_device, int n, float percentile, f
 __global__ void compute_percentiles_batched_kernel(const float* data_batched, const int* counts, int max_count, float percentile, float* results, int N) {
     int n = blockIdx.x;  // One block per batch
     if (n >= N) return;
-    
+
     const int num_bins = 256;  // Reduced for per-block computation
     __shared__ int histogram[256];
     __shared__ float min_val;
     __shared__ float max_val;
-    
+
     const float* data = data_batched + n * max_count;
-    int count = counts[n];
-    
+    int count         = counts[n];
+
     // Initialize shared memory
-    for (int i = threadIdx.x; i < num_bins; i += blockDim.x) {
-        histogram[i] = 0;
-    }
-    
+    for (int i = threadIdx.x; i < num_bins; i += blockDim.x) { histogram[i] = 0; }
+
     if (threadIdx.x == 0) {
         min_val = INFINITY;
         max_val = -INFINITY;
     }
     __syncthreads();
-    
+
     // Compute min/max in parallel
     float local_min = INFINITY;
     float local_max = -INFINITY;
@@ -691,40 +685,40 @@ __global__ void compute_percentiles_batched_kernel(const float* data_batched, co
         local_min = fminf(local_min, val);
         local_max = fmaxf(local_max, val);
     }
-    
+
     // Reduce to single min/max
     for (int offset = blockDim.x / 2; offset > 0; offset /= 2) {
         float other_min = __shfl_down_sync(0xffffffff, local_min, offset);
         float other_max = __shfl_down_sync(0xffffffff, local_max, offset);
-        local_min = fminf(local_min, other_min);
-        local_max = fmaxf(local_max, other_max);
+        local_min       = fminf(local_min, other_min);
+        local_max       = fmaxf(local_max, other_max);
     }
-    
+
     if (threadIdx.x % WARP_SIZE == 0) {
-        atomicMin((int*)&min_val, __float_as_int(local_min));
-        atomicMax((int*)&max_val, __float_as_int(local_max));
+        atomicMin((int*) &min_val, __float_as_int(local_min));
+        atomicMax((int*) &max_val, __float_as_int(local_max));
     }
     __syncthreads();
-    
+
     // Build histogram
     float range = max_val - min_val;
     if (range < 1e-10f) range = 1e-10f;
-    
+
     for (int i = threadIdx.x; i < count; i += blockDim.x) {
         float val = data[i];
-        int bin = (int)((val - min_val) / range * num_bins);
+        int bin   = (int) ((val - min_val) / range * num_bins);
         if (bin < 0) bin = 0;
         if (bin >= num_bins) bin = num_bins - 1;
         atomicAdd(&histogram[bin], 1);
     }
     __syncthreads();
-    
+
     // Find percentile (single thread)
     if (threadIdx.x == 0) {
-        int target_count = (int)(percentile / 100.0f * (count - 1) + 1);
-        int cumsum = 0;
-        int bin = 0;
-        
+        int target_count = (int) (percentile / 100.0f * (count - 1) + 1);
+        int cumsum       = 0;
+        int bin          = 0;
+
         for (int i = 0; i < num_bins; i++) {
             cumsum += histogram[i];
             if (cumsum >= target_count) {
@@ -732,10 +726,10 @@ __global__ void compute_percentiles_batched_kernel(const float* data_batched, co
                 break;
             }
         }
-        
+
         // Interpolate within bin
         float bin_width = range / num_bins;
-        results[n] = min_val + (bin + 0.5f) * bin_width;
+        results[n]      = min_val + (bin + 0.5f) * bin_width;
     }
 }
 
@@ -906,11 +900,11 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     compute_percentiles_batched_kernel<<<N, num_threads>>>(phi_batched.data_ptr<float>(), num_filtered_array.data_ptr<int>(), max_num_filtered, alpha, min_phi_device.data_ptr<float>(), N);
     err = cudaGetLastError();
     if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in compute_percentiles_batched_kernel (min_phi): ", cudaGetErrorString(err)); }
-    
+
     compute_percentiles_batched_kernel<<<N, num_threads>>>(phi_batched.data_ptr<float>(), num_filtered_array.data_ptr<int>(), max_num_filtered, 100.0f - alpha, max_phi_device.data_ptr<float>(), N);
     err = cudaGetLastError();
     if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in compute_percentiles_batched_kernel (max_phi): ", cudaGetErrorString(err)); }
-    
+
     cudaDeviceSynchronize();
 
     // Step 6: Compute stain vectors for all images
@@ -960,21 +954,21 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     cudaDeviceSynchronize();
 
     // Compute max concentrations (99th percentile) for all images using GPU
-    torch::Tensor max_conc_device = torch::empty({N, 2}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device()));
+    torch::Tensor max_conc_device  = torch::empty({N, 2}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device()));
     torch::Tensor counts_per_pixel = torch::full({N}, num_pixels, torch::TensorOptions().dtype(torch::kInt32).device(images_float.device()));
 
     // Compute percentile for channel 0
     compute_percentiles_batched_kernel<<<N, num_threads>>>(concentrations_batched.data_ptr<float>(), counts_per_pixel.data_ptr<int>(), num_pixels, 99.0f, max_conc_device.data_ptr<float>(), N);
     err = cudaGetLastError();
     if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in compute_percentiles_batched_kernel (conc channel 0): ", cudaGetErrorString(err)); }
-    
+
     // Compute percentile for channel 1 (offset by num_pixels in concentrations_batched)
     compute_percentiles_batched_kernel<<<N, num_threads>>>(concentrations_batched.data_ptr<float>() + num_pixels, counts_per_pixel.data_ptr<int>(), num_pixels, 99.0f, max_conc_device.data_ptr<float>() + N, N);
     err = cudaGetLastError();
     if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in compute_percentiles_batched_kernel (conc channel 1): ", cudaGetErrorString(err)); }
-    
+
     cudaDeviceSynchronize();
-    
+
     // Clamp to avoid division by zero
     clamp_kernel<<<(N * 2 + num_threads - 1) / num_threads, num_threads>>>(max_conc_device.data_ptr<float>(), 1.0f, 1e10f, N * 2);
     cudaDeviceSynchronize();
