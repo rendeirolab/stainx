@@ -205,7 +205,7 @@ def main():
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations")
     parser.add_argument("--runs", type=int, default=10, help="Number of benchmark iterations")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--batch-size", type=int, default=16, help="Batch size for images")
+    parser.add_argument("--batch-size", type=int, default=1024, help="Batch size for images")
 
     args = parser.parse_args()
 
