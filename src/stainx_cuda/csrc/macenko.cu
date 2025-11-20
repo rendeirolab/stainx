@@ -846,7 +846,7 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in compute_covariance_batched_kernel: ", cudaGetErrorString(err)); }
     cudaDeviceSynchronize();
 
-    // Step 4: Eigenvalue decomposition for all images using cuSOLVER batched API
+    // Step 4: Eigenvalue decomposition for all images using cuSOLVER with streams for parallelization
     // Prepare pointers for batched eigendecomposition
     torch::Tensor eigvecs_batched = torch::empty({N, 9}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
     torch::Tensor eigvals_batched = torch::empty({N, 3}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
@@ -870,12 +870,24 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     torch::Tensor workspace_syevd = torch::empty({lwork_syevd * N}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
     torch::Tensor devInfo_syevd   = torch::empty({N}, torch::TensorOptions().dtype(torch::kInt32).device(images_float.device())).contiguous();
 
-    // Run eigendecomposition for all images
+    // Run eigendecomposition for all images using CUDA streams for parallelization
+    const int num_streams = std::min(N, 16);  // Use up to 16 streams
+    std::vector<cudaStream_t> streams(num_streams);
+    for (int i = 0; i < num_streams; i++) { cudaStreamCreate(&streams[i]); }
+
     for (int n = 0; n < N; n++) {
+        int stream_id = n % num_streams;
+        cusolverDnSetStream(cusolver_handle, streams[stream_id]);
         status_batch = cusolverDnSsyevd(cusolver_handle, CUSOLVER_EIG_MODE_VECTOR, CUBLAS_FILL_MODE_LOWER, 3, eigvecs_ptrs[n], 3, eigvals_ptrs[n], workspace_syevd.data_ptr<float>() + n * lwork_syevd, lwork_syevd, devInfo_syevd.data_ptr<int>() + n);
         if (status_batch != CUSOLVER_STATUS_SUCCESS) { TORCH_CHECK(false, "cusolverDnSsyevd failed for image ", n); }
     }
+
+    // Synchronize all streams
+    for (int i = 0; i < num_streams; i++) { cudaStreamSynchronize(streams[i]); }
     cudaDeviceSynchronize();
+
+    // Cleanup streams
+    for (int i = 0; i < num_streams; i++) { cudaStreamDestroy(streams[i]); }
 
     // Extract last 2 eigenvectors for all images
     torch::Tensor eigvecs_2d_batched = torch::empty({N, 6}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
@@ -913,7 +925,7 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     compute_stain_vectors_batched_kernel<<<N, num_threads>>>(eigvecs_2d_batched.data_ptr<float>(), min_phi_device.data_ptr<float>(), max_phi_device.data_ptr<float>(), HE_source_batched.data_ptr<float>(), N);
     cudaDeviceSynchronize();
 
-    // Step 7: SVD for HE_source matrices (batched)
+    // Step 7: SVD for HE_source matrices
     torch::Tensor U_batched  = torch::empty({N, 9}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
     torch::Tensor S_batched  = torch::empty({N, 2}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
     torch::Tensor VT_batched = torch::empty({N, 4}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
@@ -926,8 +938,14 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     torch::Tensor workspace_svd = torch::empty({lwork_svd * N}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
     torch::Tensor devInfo_svd   = torch::empty({N}, torch::TensorOptions().dtype(torch::kInt32).device(images_float.device())).contiguous();
 
-    // Run SVD for each HE_source
+    // Run SVD for each HE_source using CUDA streams for parallelization (similar to eigendecomposition)
+    const int num_streams_svd = std::min(N, 16);  // Use up to 16 streams
+    std::vector<cudaStream_t> streams_svd(num_streams_svd);
+    for (int i = 0; i < num_streams_svd; i++) { cudaStreamCreate(&streams_svd[i]); }
+
     for (int n = 0; n < N; n++) {
+        int stream_id = n % num_streams_svd;
+        cusolverDnSetStream(cusolver_handle, streams_svd[stream_id]);
         float* HE_ptr = HE_source_batched.data_ptr<float>() + n * 6;
         float* U_ptr  = U_batched.data_ptr<float>() + n * 9;
         float* S_ptr  = S_batched.data_ptr<float>() + n * 2;
@@ -936,7 +954,13 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
         status_svd = cusolverDnSgesvd(cusolver_handle, 'A', 'A', 3, 2, HE_ptr, 3, S_ptr, U_ptr, 3, VT_ptr, 2, workspace_svd.data_ptr<float>() + n * lwork_svd, lwork_svd, nullptr, devInfo_svd.data_ptr<int>() + n);
         if (status_svd != CUSOLVER_STATUS_SUCCESS) { TORCH_CHECK(false, "cusolverDnSgesvd failed for image ", n); }
     }
+
+    // Synchronize all streams
+    for (int i = 0; i < num_streams_svd; i++) { cudaStreamSynchronize(streams_svd[i]); }
     cudaDeviceSynchronize();
+
+    // Cleanup streams
+    for (int i = 0; i < num_streams_svd; i++) { cudaStreamDestroy(streams_svd[i]); }
 
     // Reshape OD for all images: (N, H*W, 3) -> (N, 3, H*W)
     torch::Tensor od_all_batched = torch::empty({N, 3, num_pixels}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
