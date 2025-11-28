@@ -23,9 +23,14 @@ class CUDADeviceInfo:
     """Handles CUDA device detection and information retrieval."""
 
     def __init__(self):
-        if not torch.cuda.is_available():
+        self.cuda_available = torch.cuda.is_available()
+        if not self.cuda_available:
             print("CUDA not available. Skipping CUDA extension build.")
-            sys.exit(0)
+            self.device = None
+            self.device_name = None
+            self.device_capability = None
+            self.compute_capability = None
+            return
 
         self.device = torch.cuda.current_device()
         self.device_name = torch.cuda.get_device_name(self.device)
@@ -111,6 +116,9 @@ class CUDAExtensionBuilder:
 
     def build(self):
         """Build the CUDA extension configuration."""
+        if not self.device_info.cuda_available:
+            return []
+
         # Print device and version info
         self.device_info.print_info()
         self.version_checker.check()
@@ -141,4 +149,17 @@ builder = CUDAExtensionBuilder(project_root)
 extensions = builder.build()
 build_ext = builder.get_build_ext_class()
 
-setup(name="stainx-cuda", ext_modules=extensions, cmdclass={"build_ext": build_ext}, zip_safe=False)
+# Package discovery - setuptools will auto-discover packages in src/
+# but we explicitly configure it to ensure both stainx and stainx_cuda are included
+setup_kwargs = {
+    "packages": ["stainx", "stainx_cuda"],
+    "package_dir": {"": "src"},
+    "zip_safe": False,
+}
+
+# Only add extension-related arguments if CUDA extension is being built
+if extensions:
+    setup_kwargs["ext_modules"] = extensions
+    setup_kwargs["cmdclass"] = {"build_ext": build_ext}
+
+setup(**setup_kwargs)
