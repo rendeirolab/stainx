@@ -15,7 +15,7 @@ from typing import ClassVar
 
 import torch
 import torch.utils.cpp_extension as torch_cpp_ext
-from setuptools import setup
+from setuptools import find_packages, setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 
@@ -153,10 +153,14 @@ builder = CUDAExtensionBuilder(project_root)
 extensions = builder.build()
 build_ext = builder.get_build_ext_class()
 
-# Package discovery - setuptools will auto-discover packages in src/
-# but we explicitly configure it to ensure both stainx and stainx_cuda are included
+# Package discovery - use find_packages to automatically discover all packages and subpackages
+packages = find_packages(where="src")
+# Ensure stainx_cuda is included even if it doesn't have __init__.py with Python code
+if "stainx_cuda" not in packages:
+    packages.append("stainx_cuda")
+
 setup_kwargs = {
-    "packages": ["stainx", "stainx_cuda"],
+    "packages": packages,
     "package_dir": {"": "src"},
     "zip_safe": False,
 }
