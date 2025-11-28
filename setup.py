@@ -126,12 +126,16 @@ class CUDAExtensionBuilder:
         # Get architecture flags
         nvcc_flags = self.flags_manager.get_architecture_flags(self.device_info.compute_capability)
 
-        # Define source files
-        sources = [str(self.csrc_dir / "bindings.cpp"), str(self.csrc_dir / "histogram_matching.cu"), str(self.csrc_dir / "reinhard.cu"), str(self.csrc_dir / "macenko.cu")]
+        # Define source files - use relative paths from setup.py directory
+        source_files = ["bindings.cpp", "histogram_matching.cu", "reinhard.cu", "macenko.cu"]
+        sources = [str(Path("src") / "stainx_cuda" / "csrc" / f) for f in source_files]
+
+        # Include directory - use relative path
+        include_dir = str(Path("src") / "stainx_cuda" / "csrc")
 
         # Create extension
         extension = CUDAExtension(
-            name="stainx_cuda", sources=sources, include_dirs=[str(self.csrc_dir)], define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))], extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags}, extra_link_args=["-lcudart", "-lcublas", "-lcusolver"]
+            name="stainx_cuda", sources=sources, include_dirs=[include_dir], define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))], extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags}, extra_link_args=["-lcudart", "-lcublas", "-lcusolver"]
         )
 
         return [extension]
