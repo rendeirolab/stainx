@@ -168,22 +168,13 @@ class BenchmarkRunner:
         self.executor = BenchmarkExecutor(warmup_iterations, benchmark_iterations)
 
     def run_reinhard_benchmarks(self, reference_image: torch.Tensor, source_image: torch.Tensor, device: str) -> dict[str, dict[str, Any]]:
-        return {
-            "cuda": self.executor.run_reinhard_cuda(reference_image, source_image, device),
-            "pytorch": self.executor.run_reinhard_pytorch(reference_image, source_image, device),
-        }
+        return {"cuda": self.executor.run_reinhard_cuda(reference_image, source_image, device), "pytorch": self.executor.run_reinhard_pytorch(reference_image, source_image, device)}
 
     def run_macenko_benchmarks(self, reference_image: torch.Tensor, source_image: torch.Tensor, device: str) -> dict[str, dict[str, Any]]:
-        return {
-            "cuda": self.executor.run_macenko_cuda(reference_image, source_image, device),
-            "pytorch": self.executor.run_macenko_pytorch(reference_image, source_image, device),
-        }
+        return {"cuda": self.executor.run_macenko_cuda(reference_image, source_image, device), "pytorch": self.executor.run_macenko_pytorch(reference_image, source_image, device)}
 
     def run_histogram_matching_benchmarks(self, reference_image: torch.Tensor, source_image: torch.Tensor, device: str, channel_axis: int = 1) -> dict[str, dict[str, Any]]:
-        return {
-            "cuda": self.executor.run_histogram_matching_cuda(reference_image, source_image, device, channel_axis),
-            "pytorch": self.executor.run_histogram_matching_pytorch(reference_image, source_image, device, channel_axis),
-        }
+        return {"cuda": self.executor.run_histogram_matching_cuda(reference_image, source_image, device, channel_axis), "pytorch": self.executor.run_histogram_matching_pytorch(reference_image, source_image, device, channel_axis)}
 
     @staticmethod
     def calculate_speedup(baseline_time: float, comparison_time: float) -> str:
@@ -373,13 +364,7 @@ def main():
         else:
             rel_error = float("inf")
 
-        macenko_table.add_row([
-            f"{height}x{width}",
-            f"{macenko_results['cuda']['time_ms']:.3f}" if macenko_results["cuda"]["success"] else "N/A",
-            f"{macenko_results['pytorch']['time_ms']:.3f}" if macenko_results["pytorch"]["success"] else "ERROR",
-            speedup,
-            f"{rel_error:.6f}" if rel_error != float("inf") else "N/A",
-        ])
+        macenko_table.add_row([f"{height}x{width}", f"{macenko_results['cuda']['time_ms']:.3f}" if macenko_results["cuda"]["success"] else "N/A", f"{macenko_results['pytorch']['time_ms']:.3f}" if macenko_results["pytorch"]["success"] else "ERROR", speedup, f"{rel_error:.6f}" if rel_error != float("inf") else "N/A"])
 
         # HistogramMatching benchmarks
         logger.info("  Running HistogramMatching benchmarks...")
@@ -433,5 +418,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

@@ -19,10 +19,10 @@ elif torch_lib_path not in os.environ["LD_LIBRARY_PATH"]:
 
 # Import the compiled CUDA extension if available
 try:
-    from .stainx_cuda import histogram_matching, reinhard, macenko
+    from .stainx_cuda import histogram_matching, macenko, reinhard
 
     # Expose functions at package level for easy import
-    __all__ = ["histogram_matching", "reinhard", "macenko"]
+    __all__ = ["histogram_matching", "macenko", "reinhard"]
 except ImportError:
     # CUDA extension not available - this is expected if CUDA extension wasn't built
     __all__ = []
@@ -34,8 +34,5 @@ except Exception as e:
         traceback.print_exc()
     # Re-raise if it's a library loading issue (not just missing extension)
     if "cannot open shared object file" in str(e) or "libc10" in str(e) or "libtorch" in str(e):
-        raise RuntimeError(
-            f"Failed to load CUDA extension due to missing libraries. "
-            f"Please ensure LD_LIBRARY_PATH includes PyTorch's lib directory: {torch_lib_path if 'torch_lib_path' in locals() else 'unknown'}"
-        ) from e
+        raise RuntimeError(f"Failed to load CUDA extension due to missing libraries. Please ensure LD_LIBRARY_PATH includes PyTorch's lib directory: {torch_lib_path if 'torch_lib_path' in locals() else 'unknown'}") from e
     __all__ = []
