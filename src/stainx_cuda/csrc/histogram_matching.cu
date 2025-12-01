@@ -333,42 +333,10 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
         images_uint8            = input_images.contiguous();
         was_uint8_or_high_range = true;
     } else {
-        // Check if input is in [0, 1] range using CUB max reduction
-        torch::Tensor input_flat = input_images.contiguous().view(-1);
-        int num_elements         = input_flat.numel();
-
-        // Use CUB DeviceReduce::Max to find max value
-        void* d_temp_storage      = nullptr;
-        size_t temp_storage_bytes = 0;
-        float max_val             = 0.0f;
-
-        // Determine temporary storage requirements
-        cub::DeviceReduce::Max(d_temp_storage, temp_storage_bytes, input_flat.data_ptr<float>(), &max_val, num_elements, stream);
-
-        // Allocate temporary storage
-        err = cudaMalloc(&d_temp_storage, temp_storage_bytes);
-        if (err != cudaSuccess) {
-            TORCH_CHECK(false, "CUDA error allocating temporary storage for max reduction: ", cudaGetErrorString(err));
-        }
-
-        // Run max reduction
-        cub::DeviceReduce::Max(d_temp_storage, temp_storage_bytes, input_flat.data_ptr<float>(), &max_val, num_elements, stream);
-
-        // Synchronize to ensure max is computed (DeviceReduce writes to host pointer)
-        err = cudaStreamSynchronize(stream);
-        if (err != cudaSuccess) {
-            cudaFree(d_temp_storage);
-            TORCH_CHECK(false, "CUDA error synchronizing stream after max reduction: ", cudaGetErrorString(err));
-        }
-
-        // Free temporary storage
-        if (d_temp_storage != nullptr) {
-            err = cudaFree(d_temp_storage);
-            if (err != cudaSuccess) {
-                TORCH_CHECK(false, "CUDA error freeing temporary storage: ", cudaGetErrorString(err));
-            }
-        }
-
+        // Check if input is in [0, 1] range using PyTorch's max operation (safer than CUB)
+        // This avoids potential memory access issues with CUB DeviceReduce
+        float max_val = input_images.max().item<float>();
+        
         // Determine if we need to scale
         if (max_val <= 1.0f) {
             needs_scale_back = true;
@@ -377,6 +345,8 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
         }
 
         // Convert to uint8 using CUDA kernel
+        // Ensure input is contiguous for kernel access
+        torch::Tensor input_flat = input_images.contiguous().view(-1);
         images_uint8     = torch::empty({N, C, H, W}, torch::TensorOptions().dtype(torch::kUInt8).device(input_images.device()));
         int total_pixels = N * C * H * W;
         int num_blocks   = (total_pixels + num_threads - 1) / num_threads;
