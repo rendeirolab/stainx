@@ -20,7 +20,6 @@ htmlcov/
 .venv
 
 .idea/
-.vscode/
 
 # Benchmark logs
 benchmarks/logs/

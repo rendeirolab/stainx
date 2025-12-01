@@ -1,0 +1,33 @@
+{
+  "files.exclude": {
+    "**/dist": true,
+    "**/htmlcov": true,
+    "**/__pycache__": true,
+    "**/*.egg-info": true,
+    "**/*.so": true
+  },
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python3",
+  "python.terminal.activateEnvironment": false,
+  "python.analysis.autoImportCompletions": true,
+  "jupyter.defaultKernel": "stainx",
+  "jupyter.kernels.filter": [
+    {
+      "path": "${workspaceFolder}/.venv/bin/python3",
+      "type": "pythonEnvironment"
+    }
+  ],
+  "jupyter.interactiveWindow.creationMode": "perFile",
+  "jupyter.notebookFileRoot": "${workspaceFolder}",
+  "jupyter.kernels.trusted": [
+    "stainx"
+  ],
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/src"
+  ],
+  "jupyter.jupyterServerType": "local",
+  "notebook.defaultFormatter": "ms-python.python",
+  "jupyter.interactiveWindowMode": "perFile",
+  "jupyter.askForKernelRestart": false,
+  "jupyter.kernelRestart": false,
+  "python.analysis.diagnosticMode": "workspace"
+}
