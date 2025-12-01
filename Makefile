@@ -14,35 +14,49 @@ PYTEST := $(UV) run pytest
 # Default target
 help:
 	@echo "Available targets:"
-	@echo "  make build      - Build the package (includes CUDA extension if available)"
-	@echo "  make clean      - Clean build artifacts and cache files"
-	@echo "  make test       - Run tests"
-	@echo "  make lint       - Check code for linting issues"
-	@echo "  make fix        - Auto-fix linting issues and format code"
+	@echo "  make build       - Build distribution packages (wheels + sdist) using uv build"
+	@echo "  make install     - Fast editable install for development (production deps only)"
+	@echo "  make install-dev - Install with dev dependencies"
+	@echo "  make clean       - Clean build artifacts and cache files"
+	@echo "  make test        - Run tests"
+	@echo "  make lint        - Check code for linting issues"
+	@echo "  make fix         - Auto-fix linting issues and format code"
 
-# Build and install the package
+# Build distribution packages (wheels + sdist) - optimized for PyPI publishing
 build:
 	@if [ ! -f "$(UV)" ] && ! PATH="$(HOME)/.local/bin:$$PATH" command -v uv >/dev/null 2>&1; then \
 		echo "uv is not installed. Installing uv..."; \
 		curl -LsSf https://astral.sh/uv/install.sh | sh; \
 	fi
-	@echo "Cleaning build artifacts..."
-	rm -rf build/
-	find . -path "./.venv" -prune -o -path "./src/stainx_cuda" -prune -o -type f -name "*.so" -print | xargs rm -f 2>/dev/null || true
+	@echo "Building distribution packages with uv build..."
+	$(UV) build
+	@echo "Build complete! Artifacts are in dist/"
+
+# Fast editable install for development
+install:
+	@if [ ! -f "$(UV)" ] && ! PATH="$(HOME)/.local/bin:$$PATH" command -v uv >/dev/null 2>&1; then \
+		echo "uv is not installed. Installing uv..."; \
+		curl -LsSf https://astral.sh/uv/install.sh | sh; \
+	fi
+	@echo "Installing stainx in editable mode (fast, production deps only)..."
+	$(UV) pip install -e .
+	@echo "Building CUDA extension in-place (if CUDA is available)..."
+	@$(UV) run python setup.py build_ext --inplace || echo "Warning: CUDA extension build failed or skipped, continuing with PyTorch backend only"
+	@echo "Installation complete!"
+
+# Install with dev dependencies
+install-dev:
+	@if [ ! -f "$(UV)" ] && ! PATH="$(HOME)/.local/bin:$$PATH" command -v uv >/dev/null 2>&1; then \
+		echo "uv is not installed. Installing uv..."; \
+		curl -LsSf https://astral.sh/uv/install.sh | sh; \
+	fi
 	@echo "Syncing uv environment with dev dependencies..."
 	$(UV) sync --dev
-	@echo "Building CUDA extension (if CUDA is available)..."
-	@$(UV) run python setup.py build_ext --inplace || echo "Warning: CUDA extension build failed or skipped, continuing with PyTorch backend only"
-	@for so_file in src/stainx_cuda*.so; do [ -f "$$so_file" ] && mv "$$so_file" src/stainx_cuda/ || true; done
-	@for so_file in src/stainx_cuda*.pyd; do [ -f "$$so_file" ] && mv "$$so_file" src/stainx_cuda/ || true; done
-	@for so_file in stainx_cuda*.so; do [ -f "$$so_file" ] && mv "$$so_file" src/stainx_cuda/ || true; done
-	@for so_file in stainx_cuda*.pyd; do [ -f "$$so_file" ] && mv "$$so_file" src/stainx_cuda/ || true; done
-	@echo "CUDA extension build complete. Note: LD_LIBRARY_PATH may need to be set for runtime."
 	@echo "Installing stainx in editable mode..."
 	$(UV) pip install -e .
-	@echo "Installing benchmark dependencies..."
-	$(UV) pip install --group benchmark .
-	@echo "Build and install complete!"
+	@echo "Building CUDA extension in-place (if CUDA is available)..."
+	@$(UV) run python setup.py build_ext --inplace || echo "Warning: CUDA extension build failed or skipped, continuing with PyTorch backend only"
+	@echo "Installation with dev dependencies complete!"
 
 # Clean build artifacts and cache files
 clean:
@@ -75,8 +89,8 @@ clean:
 test:
 	@echo "Running tests..."
 	@if [ ! -d ".venv" ]; then \
-		echo "Virtual environment not found. Running 'make build' first..."; \
-		$(MAKE) build; \
+		echo "Virtual environment not found. Running 'make install-dev' first..."; \
+		$(MAKE) install-dev; \
 	fi
 	@TORCH_LIB_PATH=$$($(PYTHON) -c 'import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), "lib"))' 2>/dev/null); \
 	if [ -z "$$TORCH_LIB_PATH" ] || [ ! -d "$$TORCH_LIB_PATH" ]; then \
