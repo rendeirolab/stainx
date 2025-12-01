@@ -1,4 +1,4 @@
-name: Test
+name: CI
 
 on:
   push:
@@ -71,7 +71,6 @@ jobs:
         env:
           UV_CONCURRENT_DOWNLOADS: 50
         run: |
-          # uv sync --dev already installs the package in editable mode
           uv sync --dev
 
       - name: Build CUDA extension (if CUDA available)
