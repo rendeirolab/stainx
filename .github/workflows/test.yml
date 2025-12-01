@@ -29,7 +29,6 @@ jobs:
       - name: Install dependencies
         env:
           UV_CONCURRENT_DOWNLOADS: 50
-          UV_INDEX_STRATEGY: unsafe-any-cache
         run: |
           uv sync --dev
 
@@ -71,7 +70,6 @@ jobs:
       - name: Install dependencies
         env:
           UV_CONCURRENT_DOWNLOADS: 50
-          UV_INDEX_STRATEGY: unsafe-any-cache
         run: |
           # uv sync --dev already installs the package in editable mode
           uv sync --dev
