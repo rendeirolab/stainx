@@ -26,16 +26,6 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Cache uv dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            .venv
-            ~/.cache/uv
-          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml', 'uv.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-uv-
-
       - name: Install dependencies
         run: |
           uv sync --dev
@@ -82,17 +72,6 @@ jobs:
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
-
-      - name: Cache uv dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            .venv
-            ~/.cache/uv
-          key: ${{ runner.os }}-uv-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-uv-${{ matrix.python-version }}-
-            ${{ runner.os }}-uv-
 
       - name: Install dependencies
         run: |
@@ -152,16 +131,6 @@ jobs:
 
       - name: Set up Python
         run: uv python install 3.12
-
-      - name: Cache uv build cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/uv
-            dist/
-          key: ${{ runner.os }}-build-${{ hashFiles('pyproject.toml', 'setup.py', 'src/**') }}
-          restore-keys: |
-            ${{ runner.os }}-build-
 
       - name: Build package
         run: uv build
