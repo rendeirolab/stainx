@@ -9,7 +9,6 @@
 import contextlib
 import os
 import re
-import sys
 from pathlib import Path
 from typing import ClassVar
 
@@ -186,10 +185,30 @@ packages = find_packages(where="src")
 if "stainx_cuda" not in packages:
     packages.append("stainx_cuda")
 
+with open("README.md") as f:
+    long_description = f.read()
+
 setup_kwargs = {
     "packages": packages,
     "package_dir": {"": "src"},
     "zip_safe": False,
+    "version": "0.1.0",
+    "description": "GPU-accelerated stain normalization",
+    "author": "Samir Moustafa",
+    "author_email": "smoustafa@cemm.oeaw.ac.at",
+    "url": "https://github.com/rendeirolab/stainx",
+    "long_description": long_description,
+    "long_description_content_type": "text/markdown",
+    "classifiers": [
+        "Environment :: GPU :: NVIDIA CUDA",
+        "Intended Audience :: Developers",
+        "Intended Audience :: Healthcare Industry",
+        "Intended Audience :: Science/Research",
+        "License :: OSI Approved :: Apache Software License",
+        "Programming Language :: Python :: 3",
+        "Topic :: Scientific/Engineering",
+        "Topic :: Software Development",
+    ],
 }
 
 # Only add extension-related arguments if CUDA extension is being built
