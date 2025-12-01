@@ -192,7 +192,7 @@ setup_kwargs = {
     "packages": packages,
     "package_dir": {"": "src"},
     "zip_safe": False,
-    "version": "0.1.0",
+    "version": "0.0.1",
     "description": "GPU-accelerated stain normalization",
     "author": "Samir Moustafa",
     "author_email": "smoustafa@cemm.oeaw.ac.at",
