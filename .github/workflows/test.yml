@@ -1,0 +1,91 @@
+name: Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+
+      - name: Check C++/CUDA code formatting
+        run: |
+          find src/stainx_cuda/csrc/ -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -o -name "*.cu" -o -name "*.cuh" | xargs clang-format --dry-run --Werror
+
+      - name: Check Python code with ruff
+        run: |
+          uv run ruff check .
+
+  test:
+    name: Test Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+
+      - name: Install package in editable mode
+        run: |
+          uv pip install -e .
+
+      - name: Build CUDA extension (if CUDA available)
+        run: |
+          uv run python setup.py build_ext --inplace || echo "CUDA extension build skipped (CUDA not available on runner)"
+        continue-on-error: true
+
+      - name: Run tests
+        run: |
+          # Set up LD_LIBRARY_PATH for PyTorch libraries if CUDA extension is used
+          TORCH_LIB_PATH=$(uv run python -c 'import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), "lib"))' 2>/dev/null || echo "")
+          if [ -n "$TORCH_LIB_PATH" ] && [ -d "$TORCH_LIB_PATH" ]; then
+            export LD_LIBRARY_PATH="$TORCH_LIB_PATH:${LD_LIBRARY_PATH:-}"
+          fi
+          uv run pytest tests/ -v --cov=src/stainx --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        if: matrix.python-version == '3.12'
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
