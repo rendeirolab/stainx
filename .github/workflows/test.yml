@@ -27,6 +27,9 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
+        env:
+          UV_CONCURRENT_DOWNLOADS: 50
+          UV_INDEX_STRATEGY: unsafe-any-cache
         run: |
           uv sync --dev
 
@@ -66,12 +69,12 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
+        env:
+          UV_CONCURRENT_DOWNLOADS: 50
+          UV_INDEX_STRATEGY: unsafe-any-cache
         run: |
+          # uv sync --dev already installs the package in editable mode
           uv sync --dev
-
-      - name: Install package in editable mode
-        run: |
-          uv pip install -e .
 
       - name: Build CUDA extension (if CUDA available)
         run: |
