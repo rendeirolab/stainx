@@ -21,7 +21,7 @@ torch::Tensor reinhard_cuda(torch::Tensor input_images, torch::Tensor reference_
 
 torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matrix, torch::Tensor target_max_conc);
 
-PYBIND11_MODULE(_compiled, m) {
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.doc() = "StainX CUDA backend for GPU-accelerated stain normalization";
 
     // Bind CUDA implementations

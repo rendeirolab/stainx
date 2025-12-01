@@ -134,8 +134,10 @@ class CUDAExtensionBuilder:
         include_dir = str(Path("src") / "stainx_cuda" / "csrc")
 
         # Create extension
+        # Use "stainx_cuda.stainx_cuda" as the name
+        # This creates a module that can be imported as "from stainx_cuda import stainx_cuda"
         extension = CUDAExtension(
-            name="stainx_cuda", sources=sources, include_dirs=[include_dir], define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))], extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags}, extra_link_args=["-lcudart", "-lcublas", "-lcusolver"]
+            name="stainx_cuda.stainx_cuda", sources=sources, include_dirs=[include_dir], define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))], extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags}, extra_link_args=["-lcudart", "-lcublas", "-lcusolver"]
         )
 
         return [extension]
@@ -145,6 +147,31 @@ class CUDAExtensionBuilder:
         use_ninja = os.environ.get("USE_NINJA", "true").lower() == "true"
         return BuildExtension.with_options(use_ninja=use_ninja)
 
+
+# Automatically detect and set CUDA architectures
+if torch.cuda.is_available() and "TORCH_CUDA_ARCH_LIST" not in os.environ:
+    from torch import cuda
+
+    arch_list = []
+    for i in range(cuda.device_count()):
+        capability = cuda.get_device_capability(i)
+        arch = f"{capability[0]}.{capability[1]}"
+        arch_list.append(arch)
+
+    # Add PTX for the highest architecture for forward compatibility
+    if arch_list:
+        highest_arch = arch_list[-1]
+        arch_list.append(f"{highest_arch}+PTX")
+
+    os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(arch_list)
+    print(f"Setting TORCH_CUDA_ARCH_LIST={os.environ['TORCH_CUDA_ARCH_LIST']}")
+
+# Set PyTorch library path for runtime linking
+torch_lib_path = os.path.join(os.path.dirname(torch.__file__), "lib")
+if "LD_LIBRARY_PATH" not in os.environ:
+    os.environ["LD_LIBRARY_PATH"] = torch_lib_path
+else:
+    os.environ["LD_LIBRARY_PATH"] = f"{torch_lib_path}:{os.environ['LD_LIBRARY_PATH']}"
 
 # Main setup execution
 project_root = Path(__file__).parent
