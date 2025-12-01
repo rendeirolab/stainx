@@ -32,8 +32,8 @@ jobs:
 
       - name: Install clang-format
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-format
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends clang-format
 
       - name: Check C++/CUDA code formatting
         run: |
@@ -61,14 +61,6 @@ jobs:
         with:
           version: "latest"
           enable-cache: true
-
-      - name: Cache Python ${{ matrix.python-version }}
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/share/uv/python
-          key: ${{ runner.os }}-python-${{ matrix.python-version }}
-          restore-keys: |
-            ${{ runner.os }}-python-
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
@@ -120,14 +112,6 @@ jobs:
         with:
           version: "latest"
           enable-cache: true
-
-      - name: Cache Python 3.12
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/share/uv/python
-          key: ${{ runner.os }}-python-3.12
-          restore-keys: |
-            ${{ runner.os }}-python-
 
       - name: Set up Python
         run: uv python install 3.12
