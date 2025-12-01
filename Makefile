@@ -40,6 +40,8 @@ install:
 	fi
 	@echo "Installing stainx in editable mode (fast, production deps only)..."
 	$(UV) pip install -e .
+	@echo "Installing ninja for faster builds..."
+	@$(UV) pip install ninja || echo "Warning: ninja installation failed, builds will be slower"
 	@echo "Building CUDA extension in-place (if CUDA is available)..."
 	@$(UV) run python setup.py build_ext --inplace || echo "Warning: CUDA extension build failed or skipped, continuing with PyTorch backend only"
 	@echo "Installation complete!"

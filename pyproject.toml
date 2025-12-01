@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel", "torch>=2.0.0"]
+requires = ["setuptools>=61.0", "wheel", "torch>=2.0.0", "ninja"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -15,12 +15,12 @@ authors = [
     { name = "Yimin Zheng", email = "yzheng@cemm.oeaw.ac.at"},
     { name = "Samir Moustafa", email = "smoustafa@cemm.oeaw.ac.at"}
 ]
+license = "GPL-3.0-or-later"
 classifiers = [
     "Environment :: GPU :: NVIDIA CUDA",
     "Intended Audience :: Developers",
     "Intended Audience :: Healthcare Industry",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering",
     "Topic :: Software Development",
@@ -41,6 +41,7 @@ dev = [
     "prettytable>=3.0.0",
     "torchvision>=0.15.0",
     "ruff>=0.1.0",
+    "ninja>=1.10.0",
 ]
 benchmark = [
     "slideflow[cucim]>=3.0.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
