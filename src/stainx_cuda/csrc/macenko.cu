@@ -745,12 +745,24 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     TORCH_CHECK(input_images.is_cuda(), "input_images must be a CUDA tensor");
     TORCH_CHECK(stain_matrix.is_cuda(), "stain_matrix must be a CUDA tensor");
     TORCH_CHECK(target_max_conc.is_cuda(), "target_max_conc must be a CUDA tensor");
-    TORCH_CHECK(input_images.dim() == 4, "input_images must be 4D (N, C, H, W)");
-    TORCH_CHECK(input_images.size(1) == 3, "input_images must have 3 channels");
-    TORCH_CHECK(stain_matrix.size(0) == 3 && stain_matrix.size(1) == 2, "stain_matrix must have shape (3, 2)");
+    TORCH_CHECK(input_images.dim() == 4, "input_images must be 4D (N, C, H, W), got ", input_images.dim(), "D tensor with shape ", input_images.sizes());
+    TORCH_CHECK(input_images.size(1) == 3, "input_images must have 3 channels, got ", input_images.size(1), " channels");
+    TORCH_CHECK(stain_matrix.size(0) == 3 && stain_matrix.size(1) == 2, 
+                "stain_matrix must have shape (3, 2), got shape ", stain_matrix.sizes());
+    
+    // Check that tensors are on the same device
+    TORCH_CHECK(input_images.device() == stain_matrix.device(), 
+                "input_images and stain_matrix must be on the same device. "
+                "input_images device: ", input_images.device(), 
+                ", stain_matrix device: ", stain_matrix.device());
+    TORCH_CHECK(input_images.device() == target_max_conc.device(), 
+                "input_images and target_max_conc must be on the same device. "
+                "input_images device: ", input_images.device(), 
+                ", target_max_conc device: ", target_max_conc.device());
 
     // Get cuSOLVER handle
     cusolverDnHandle_t cusolver_handle = get_cusolver_handle();
+    cudaError_t err = cudaSuccess;  // Declare once at function level
 
     // Normalize input to [0, 1] float - minimal PyTorch operation for type conversion
     torch::Tensor images_float;
@@ -796,21 +808,39 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     int total_pixels       = N * num_pixels;
     int num_blocks_batched = (total_pixels + num_threads - 1) / num_threads;
     reshape_and_scale_kernel_batched<<<num_blocks_batched, num_threads>>>(images_float.data_ptr<float>(), rgb_flat_batched.data_ptr<float>(), H, W, N);
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in reshape_and_scale_kernel_batched: ", cudaGetErrorString(err)); }
-    cudaDeviceSynchronize();
+    err = cudaGetLastError();
+    if (err != cudaSuccess) { 
+        TORCH_CHECK(false, "CUDA error in reshape_and_scale_kernel_batched: ", cudaGetErrorString(err),
+                   ". Input shape: (", N, ", ", C, ", ", H, ", ", W, ")");
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after reshape_and_scale_kernel_batched: ", cudaGetErrorString(err));
+    }
 
     // Convert RGB to OD for all images
     rgb_to_od_kernel_batched<<<num_blocks_batched, num_threads>>>(rgb_flat_batched.data_ptr<float>(), od_flat_batched.data_ptr<float>(), Io, num_pixels, N);
     err = cudaGetLastError();
-    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in rgb_to_od_kernel_batched: ", cudaGetErrorString(err)); }
-    cudaDeviceSynchronize();
+    if (err != cudaSuccess) { 
+        TORCH_CHECK(false, "CUDA error in rgb_to_od_kernel_batched: ", cudaGetErrorString(err),
+                   ". Input shape: (", N, ", ", C, ", ", H, ", ", W, ")");
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after rgb_to_od_kernel_batched: ", cudaGetErrorString(err));
+    }
 
     // Compute minimum OD for all images
     compute_min_od_mask_kernel_batched<<<num_blocks_batched, num_threads>>>(od_flat_batched.data_ptr<float>(), min_od_batched.data_ptr<float>(), num_pixels, N);
     err = cudaGetLastError();
-    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in compute_min_od_mask_kernel_batched: ", cudaGetErrorString(err)); }
-    cudaDeviceSynchronize();
+    if (err != cudaSuccess) { 
+        TORCH_CHECK(false, "CUDA error in compute_min_od_mask_kernel_batched: ", cudaGetErrorString(err),
+                   ". Input shape: (", N, ", ", C, ", ", H, ", ", W, ")");
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after compute_min_od_mask_kernel_batched: ", cudaGetErrorString(err));
+    }
 
     // Step 1: Pre-compute maximum filtered count across all images
     torch::Tensor num_filtered_array = torch::empty({N}, torch::TensorOptions().dtype(torch::kInt32).device(images_float.device())).contiguous();
@@ -818,16 +848,32 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     // Count filtered pixels for each image
     count_filtered_pixels_all_images_kernel<<<N, num_threads>>>(min_od_batched.data_ptr<float>(), num_filtered_array.data_ptr<int>(), beta, num_pixels, N);
     err = cudaGetLastError();
-    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in count_filtered_pixels_all_images_kernel: ", cudaGetErrorString(err)); }
-    cudaDeviceSynchronize();
+    if (err != cudaSuccess) { 
+        TORCH_CHECK(false, "CUDA error in count_filtered_pixels_all_images_kernel: ", cudaGetErrorString(err),
+                   ". Input shape: (", N, ", ", C, ", ", H, ", ", W, ")");
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after count_filtered_pixels_all_images_kernel: ", cudaGetErrorString(err));
+    }
 
     // Find maximum filtered count
     torch::Tensor max_filtered_tensor = torch::zeros({1}, torch::TensorOptions().dtype(torch::kInt32).device(images_float.device()));
     find_max_kernel<<<1, num_threads>>>(num_filtered_array.data_ptr<int>(), max_filtered_tensor.data_ptr<int>(), N);
-    cudaDeviceSynchronize();
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error in find_max_kernel: ", cudaGetErrorString(err));
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after find_max_kernel: ", cudaGetErrorString(err));
+    }
 
     int max_num_filtered;
-    cudaMemcpy(&max_num_filtered, max_filtered_tensor.data_ptr<int>(), sizeof(int), cudaMemcpyDeviceToHost);
+    err = cudaMemcpy(&max_num_filtered, max_filtered_tensor.data_ptr<int>(), sizeof(int), cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error copying max_num_filtered from device to host: ", cudaGetErrorString(err));
+    }
 
     // Step 2: Allocate padded buffers for batched processing
     torch::Tensor od_filtered_batched = torch::zeros({N, max_num_filtered, 3}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
@@ -835,16 +881,28 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     // Step 2: Compact filtered pixels for all images
     compact_filtered_batched_kernel<<<N, num_threads>>>(od_flat_batched.data_ptr<float>(), min_od_batched.data_ptr<float>(), od_filtered_batched.data_ptr<float>(), num_filtered_array.data_ptr<int>(), beta, num_pixels, max_num_filtered, N);
     err = cudaGetLastError();
-    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in compact_filtered_batched_kernel: ", cudaGetErrorString(err)); }
-    cudaDeviceSynchronize();
+    if (err != cudaSuccess) { 
+        TORCH_CHECK(false, "CUDA error in compact_filtered_batched_kernel: ", cudaGetErrorString(err),
+                   ". Input shape: (", N, ", ", C, ", ", H, ", ", W, ")");
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after compact_filtered_batched_kernel: ", cudaGetErrorString(err));
+    }
 
     // Step 3: Compute covariance matrices for all images in parallel
     torch::Tensor cov_batched = torch::empty({N, 9}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
 
     compute_covariance_batched_kernel<<<N, num_threads>>>(od_filtered_batched.data_ptr<float>(), cov_batched.data_ptr<float>(), num_filtered_array.data_ptr<int>(), max_num_filtered, N);
     err = cudaGetLastError();
-    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in compute_covariance_batched_kernel: ", cudaGetErrorString(err)); }
-    cudaDeviceSynchronize();
+    if (err != cudaSuccess) { 
+        TORCH_CHECK(false, "CUDA error in compute_covariance_batched_kernel: ", cudaGetErrorString(err),
+                   ". Input shape: (", N, ", ", C, ", ", H, ", ", W, ")");
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after compute_covariance_batched_kernel: ", cudaGetErrorString(err));
+    }
 
     // Step 4: Eigenvalue decomposition for all images using cuSOLVER with streams for parallelization
     // Prepare pointers for batched eigendecomposition
@@ -883,8 +941,16 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     }
 
     // Synchronize all streams
-    for (int i = 0; i < num_streams; i++) { cudaStreamSynchronize(streams[i]); }
-    cudaDeviceSynchronize();
+    for (int i = 0; i < num_streams; i++) { 
+        err = cudaStreamSynchronize(streams[i]);
+        if (err != cudaSuccess) {
+            TORCH_CHECK(false, "CUDA error synchronizing stream ", i, " after eigendecomposition: ", cudaGetErrorString(err));
+        }
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after eigendecomposition: ", cudaGetErrorString(err));
+    }
 
     // Cleanup streams
     for (int i = 0; i < num_streams; i++) { cudaStreamDestroy(streams[i]); }
@@ -892,17 +958,38 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     // Extract last 2 eigenvectors for all images
     torch::Tensor eigvecs_2d_batched = torch::empty({N, 6}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
     extract_eigvecs_2d_batched_kernel<<<N, num_threads>>>(eigvecs_batched.data_ptr<float>(), eigvecs_2d_batched.data_ptr<float>(), N);
-    cudaDeviceSynchronize();
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error in extract_eigvecs_2d_batched_kernel: ", cudaGetErrorString(err));
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after extract_eigvecs_2d_batched_kernel: ", cudaGetErrorString(err));
+    }
 
     // Step 5: Compute That and phi for all images
     torch::Tensor That_batched = torch::empty({N, max_num_filtered, 2}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
     torch::Tensor phi_batched  = torch::empty({N, max_num_filtered}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
 
     compute_That_batched_kernel<<<N, num_threads>>>(od_filtered_batched.data_ptr<float>(), eigvecs_2d_batched.data_ptr<float>(), That_batched.data_ptr<float>(), num_filtered_array.data_ptr<int>(), max_num_filtered, N);
-    cudaDeviceSynchronize();
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error in compute_That_batched_kernel: ", cudaGetErrorString(err));
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after compute_That_batched_kernel: ", cudaGetErrorString(err));
+    }
 
     compute_phi_batched_kernel<<<N, num_threads>>>(That_batched.data_ptr<float>(), phi_batched.data_ptr<float>(), num_filtered_array.data_ptr<int>(), max_num_filtered, N);
-    cudaDeviceSynchronize();
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error in compute_phi_batched_kernel: ", cudaGetErrorString(err));
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after compute_phi_batched_kernel: ", cudaGetErrorString(err));
+    }
 
     // Compute percentiles for all images using GPU
     torch::Tensor min_phi_device = torch::empty({N}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device()));
@@ -911,19 +998,35 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     // Launch batched percentile kernels
     compute_percentiles_batched_kernel<<<N, num_threads>>>(phi_batched.data_ptr<float>(), num_filtered_array.data_ptr<int>(), max_num_filtered, alpha, min_phi_device.data_ptr<float>(), N);
     err = cudaGetLastError();
-    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in compute_percentiles_batched_kernel (min_phi): ", cudaGetErrorString(err)); }
+    if (err != cudaSuccess) { 
+        TORCH_CHECK(false, "CUDA error in compute_percentiles_batched_kernel (min_phi): ", cudaGetErrorString(err),
+                   ". Input shape: (", N, ", ", C, ", ", H, ", ", W, ")");
+    }
 
     compute_percentiles_batched_kernel<<<N, num_threads>>>(phi_batched.data_ptr<float>(), num_filtered_array.data_ptr<int>(), max_num_filtered, 100.0f - alpha, max_phi_device.data_ptr<float>(), N);
     err = cudaGetLastError();
-    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in compute_percentiles_batched_kernel (max_phi): ", cudaGetErrorString(err)); }
+    if (err != cudaSuccess) { 
+        TORCH_CHECK(false, "CUDA error in compute_percentiles_batched_kernel (max_phi): ", cudaGetErrorString(err),
+                   ". Input shape: (", N, ", ", C, ", ", H, ", ", W, ")");
+    }
 
-    cudaDeviceSynchronize();
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after compute_percentiles_batched_kernel: ", cudaGetErrorString(err));
+    }
 
     // Step 6: Compute stain vectors for all images
     torch::Tensor HE_source_batched = torch::empty({N, 6}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
 
     compute_stain_vectors_batched_kernel<<<N, num_threads>>>(eigvecs_2d_batched.data_ptr<float>(), min_phi_device.data_ptr<float>(), max_phi_device.data_ptr<float>(), HE_source_batched.data_ptr<float>(), N);
-    cudaDeviceSynchronize();
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error in compute_stain_vectors_batched_kernel: ", cudaGetErrorString(err));
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after compute_stain_vectors_batched_kernel: ", cudaGetErrorString(err));
+    }
 
     // Step 7: SVD for HE_source matrices
     torch::Tensor U_batched  = torch::empty({N, 9}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
@@ -956,8 +1059,16 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     }
 
     // Synchronize all streams
-    for (int i = 0; i < num_streams_svd; i++) { cudaStreamSynchronize(streams_svd[i]); }
-    cudaDeviceSynchronize();
+    for (int i = 0; i < num_streams_svd; i++) { 
+        err = cudaStreamSynchronize(streams_svd[i]);
+        if (err != cudaSuccess) {
+            TORCH_CHECK(false, "CUDA error synchronizing stream ", i, " after SVD: ", cudaGetErrorString(err));
+        }
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after SVD: ", cudaGetErrorString(err));
+    }
 
     // Cleanup streams
     for (int i = 0; i < num_streams_svd; i++) { cudaStreamDestroy(streams_svd[i]); }
@@ -966,7 +1077,14 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     torch::Tensor od_all_batched = torch::empty({N, 3, num_pixels}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
     int num_blocks_reshape       = (N * num_pixels + num_threads - 1) / num_threads;
     reshape_od_to_3xN_batched_kernel<<<num_blocks_reshape, num_threads>>>(od_flat_batched.data_ptr<float>(), od_all_batched.data_ptr<float>(), num_pixels, N);
-    cudaDeviceSynchronize();
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error in reshape_od_to_3xN_batched_kernel: ", cudaGetErrorString(err));
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after reshape_od_to_3xN_batched_kernel: ", cudaGetErrorString(err));
+    }
 
     // Step 7: Compute concentrations for all images
     torch::Tensor concentrations_batched = torch::empty({N, 2, num_pixels}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
@@ -974,8 +1092,14 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     size_t shared_mem_size = 0;  // Can allocate if needed
     compute_concentrations_batched_kernel<<<N, num_threads, shared_mem_size>>>(U_batched.data_ptr<float>(), S_batched.data_ptr<float>(), VT_batched.data_ptr<float>(), od_all_batched.data_ptr<float>(), concentrations_batched.data_ptr<float>(), num_pixels, N);
     err = cudaGetLastError();
-    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in compute_concentrations_batched_kernel: ", cudaGetErrorString(err)); }
-    cudaDeviceSynchronize();
+    if (err != cudaSuccess) { 
+        TORCH_CHECK(false, "CUDA error in compute_concentrations_batched_kernel: ", cudaGetErrorString(err),
+                   ". Input shape: (", N, ", ", C, ", ", H, ", ", W, ")");
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after compute_concentrations_batched_kernel: ", cudaGetErrorString(err));
+    }
 
     // Compute max concentrations (99th percentile) for all images using GPU
     torch::Tensor max_conc_device  = torch::empty({N, 2}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device()));
@@ -984,26 +1108,48 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     // Compute percentile for channel 0
     compute_percentiles_batched_kernel<<<N, num_threads>>>(concentrations_batched.data_ptr<float>(), counts_per_pixel.data_ptr<int>(), num_pixels, 99.0f, max_conc_device.data_ptr<float>(), N);
     err = cudaGetLastError();
-    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in compute_percentiles_batched_kernel (conc channel 0): ", cudaGetErrorString(err)); }
+    if (err != cudaSuccess) { 
+        TORCH_CHECK(false, "CUDA error in compute_percentiles_batched_kernel (conc channel 0): ", cudaGetErrorString(err),
+                   ". Input shape: (", N, ", ", C, ", ", H, ", ", W, ")");
+    }
 
     // Compute percentile for channel 1 (offset by num_pixels in concentrations_batched)
     compute_percentiles_batched_kernel<<<N, num_threads>>>(concentrations_batched.data_ptr<float>() + num_pixels, counts_per_pixel.data_ptr<int>(), num_pixels, 99.0f, max_conc_device.data_ptr<float>() + N, N);
     err = cudaGetLastError();
-    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in compute_percentiles_batched_kernel (conc channel 1): ", cudaGetErrorString(err)); }
+    if (err != cudaSuccess) { 
+        TORCH_CHECK(false, "CUDA error in compute_percentiles_batched_kernel (conc channel 1): ", cudaGetErrorString(err),
+                   ". Input shape: (", N, ", ", C, ", ", H, ", ", W, ")");
+    }
 
-    cudaDeviceSynchronize();
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after compute_percentiles_batched_kernel (concentrations): ", cudaGetErrorString(err));
+    }
 
     // Clamp to avoid division by zero
     clamp_kernel<<<(N * 2 + num_threads - 1) / num_threads, num_threads>>>(max_conc_device.data_ptr<float>(), 1.0f, 1e10f, N * 2);
-    cudaDeviceSynchronize();
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error in clamp_kernel: ", cudaGetErrorString(err));
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after clamp_kernel: ", cudaGetErrorString(err));
+    }
 
     // Step 8: Normalize concentrations for all images
     int total_conc_elements = N * 2 * num_pixels;
     int num_blocks_norm     = (total_conc_elements + num_threads - 1) / num_threads;
     normalize_concentrations_batched_kernel<<<num_blocks_norm, num_threads>>>(concentrations_batched.data_ptr<float>(), max_conc_device.data_ptr<float>(), target_max_conc_ptr, num_pixels, N);
     err = cudaGetLastError();
-    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in normalize_concentrations_batched_kernel: ", cudaGetErrorString(err)); }
-    cudaDeviceSynchronize();
+    if (err != cudaSuccess) { 
+        TORCH_CHECK(false, "CUDA error in normalize_concentrations_batched_kernel: ", cudaGetErrorString(err),
+                   ". Input shape: (", N, ", ", C, ", ", H, ", ", W, ")");
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after normalize_concentrations_batched_kernel: ", cudaGetErrorString(err));
+    }
 
     // Reconstruct OD for all images
     torch::Tensor od_recon_batched = torch::empty({N, 3, num_pixels}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
@@ -1011,28 +1157,53 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     int num_blocks_recon           = (total_od_elements + num_threads - 1) / num_threads;
     compute_od_recon_batched_kernel<<<num_blocks_recon, num_threads>>>(stain_matrix_ptr, concentrations_batched.data_ptr<float>(), od_recon_batched.data_ptr<float>(), num_pixels, N);
     err = cudaGetLastError();
-    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in compute_od_recon_batched_kernel: ", cudaGetErrorString(err)); }
-    cudaDeviceSynchronize();
+    if (err != cudaSuccess) { 
+        TORCH_CHECK(false, "CUDA error in compute_od_recon_batched_kernel: ", cudaGetErrorString(err),
+                   ". Input shape: (", N, ", ", C, ", ", H, ", ", W, ")");
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after compute_od_recon_batched_kernel: ", cudaGetErrorString(err));
+    }
 
     // Convert OD back to RGB and reshape to output format
     torch::Tensor rgb_batched = torch::empty({N, num_pixels, 3}, torch::TensorOptions().dtype(torch::kFloat32).device(images_float.device())).contiguous();
     int num_blocks_rgb        = (N * num_pixels + num_threads - 1) / num_threads;
     od_to_rgb_transpose_batched_kernel<<<num_blocks_rgb, num_threads>>>(od_recon_batched.data_ptr<float>(), rgb_batched.data_ptr<float>(), Io, num_pixels, N);
-    cudaDeviceSynchronize();
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error in od_to_rgb_transpose_batched_kernel: ", cudaGetErrorString(err));
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after od_to_rgb_transpose_batched_kernel: ", cudaGetErrorString(err));
+    }
 
     // Reshape to final output format: (N, H*W, 3) -> (N, 3, H, W)
     reshape_output_kernel_batched<<<num_blocks_batched, num_threads>>>(rgb_batched.data_ptr<float>(), output.data_ptr<float>(), H, W, N);
     err = cudaGetLastError();
-    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in reshape_output_kernel_batched: ", cudaGetErrorString(err)); }
-    cudaDeviceSynchronize();
+    if (err != cudaSuccess) { 
+        TORCH_CHECK(false, "CUDA error in reshape_output_kernel_batched: ", cudaGetErrorString(err),
+                   ". Input shape: (", N, ", ", C, ", ", H, ", ", W, ")");
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after reshape_output_kernel_batched: ", cudaGetErrorString(err));
+    }
 
     // Final clamp to [0, 255]
     int total_output_elements = N * C * H * W;
     int num_blocks_output     = (total_output_elements + num_threads - 1) / num_threads;
     clamp_kernel<<<num_blocks_output, num_threads>>>(output.data_ptr<float>(), 0.0f, 255.0f, total_output_elements);
     err = cudaGetLastError();
-    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in final clamp_kernel: ", cudaGetErrorString(err)); }
-    cudaDeviceSynchronize();
+    if (err != cudaSuccess) { 
+        TORCH_CHECK(false, "CUDA error in final clamp_kernel: ", cudaGetErrorString(err),
+                   ". Input shape: (", N, ", ", C, ", ", H, ", ", W, ")");
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing device after final clamp_kernel: ", cudaGetErrorString(err));
+    }
 
     // Convert to original dtype
     torch::ScalarType original_dtype = input_images.scalar_type();

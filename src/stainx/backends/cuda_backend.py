@@ -56,15 +56,41 @@ class HistogramMatchingCUDA(CUDABackendBase):
         # Handle reference histogram (can be list or single tensor)
         # If list provided, stack into (C, 256) tensor for per-channel processing
         if isinstance(reference_histogram, list):
-            # Stack per-channel histograms into (C, 256) tensor
-            ref_hist_list = [h.to(self.device) for h in reference_histogram]
+            if len(reference_histogram) == 0:
+                raise ValueError("reference_histogram list cannot be empty")
+            
+            # Validate shapes first (quick check without moving to device)
+            for i, h in enumerate(reference_histogram):
+                if not isinstance(h, torch.Tensor):
+                    raise TypeError(f"reference_histogram[{i}] must be a torch.Tensor, got {type(h)}")
+                if h.dim() != 1 or h.size(0) != 256:
+                    raise ValueError(
+                        f"Each histogram in reference_histogram list must be 1D with 256 elements. "
+                        f"Got histogram at index {i} with shape {h.sizes()}"
+                    )
+            
+            # Stack all histograms at once (more efficient than moving each individually)
+            ref_hist = torch.stack(reference_histogram, dim=0)  # (num_histograms, 256)
+            
             # Ensure we have histograms for all channels (pad with first if needed)
-            while len(ref_hist_list) < images.size(1):
-                ref_hist_list.append(ref_hist_list[0])
-            ref_hist = torch.stack(ref_hist_list[: images.size(1)], dim=0)  # (C, 256)
+            num_channels = images.size(1)
+            if ref_hist.size(0) < num_channels:
+                # Pad by repeating the first histogram
+                padding = ref_hist[0:1].repeat(num_channels - ref_hist.size(0), 1)
+                ref_hist = torch.cat([ref_hist, padding], dim=0)
+            elif ref_hist.size(0) > num_channels:
+                # Truncate to match number of channels
+                ref_hist = ref_hist[:num_channels]
+            
+            # Move to device once after stacking
+            ref_hist = ref_hist.to(self.device)  # (C, 256)
         else:
             # Single histogram for all channels: (256,)
             ref_hist = reference_histogram.to(self.device)
+            if ref_hist.dim() != 1 or ref_hist.size(0) != 256:
+                raise ValueError(
+                    f"reference_histogram must be 1D with 256 elements. Got shape {ref_hist.sizes()}"
+                )
 
         # Check if CUDA function is available
         if not hasattr(stainx_cuda, "histogram_matching"):

@@ -302,9 +302,13 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
     // Check inputs
     TORCH_CHECK(input_images.is_cuda(), "input_images must be a CUDA tensor");
     TORCH_CHECK(reference_histogram.is_cuda(), "reference_histogram must be a CUDA tensor");
-    TORCH_CHECK(input_images.dim() == 4, "input_images must be 4D (N, C, H, W)");
-    // Note: We allow any number of channels at dim 1 to match PyTorch backend behavior
-    // when processing corrupted formats from prepare_for_normalizer
+    TORCH_CHECK(input_images.dim() == 4, "input_images must be 4D (N, C, H, W), got ", input_images.dim(), "D tensor with shape ", input_images.sizes());
+    
+    // Check that tensors are on the same device
+    TORCH_CHECK(input_images.device() == reference_histogram.device(), 
+                "input_images and reference_histogram must be on the same device. "
+                "input_images device: ", input_images.device(), 
+                ", reference_histogram device: ", reference_histogram.device());
 
     // Get device and stream
     cudaStream_t stream = at::cuda::getCurrentCUDAStream();
@@ -321,6 +325,7 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
     int num_bins                 = 256;
     int total_pixels_per_channel = N * H * W;
     int num_threads              = THREADS_PER_BLOCK;
+    cudaError_t err              = cudaSuccess;  // Declare once at function level
 
     // Check input range and convert to uint8 if needed
     torch::Tensor images_uint8;
@@ -341,16 +346,28 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
         cub::DeviceReduce::Max(d_temp_storage, temp_storage_bytes, input_flat.data_ptr<float>(), &max_val, num_elements, stream);
 
         // Allocate temporary storage
-        cudaMalloc(&d_temp_storage, temp_storage_bytes);
+        err = cudaMalloc(&d_temp_storage, temp_storage_bytes);
+        if (err != cudaSuccess) {
+            TORCH_CHECK(false, "CUDA error allocating temporary storage for max reduction: ", cudaGetErrorString(err));
+        }
 
         // Run max reduction
         cub::DeviceReduce::Max(d_temp_storage, temp_storage_bytes, input_flat.data_ptr<float>(), &max_val, num_elements, stream);
 
         // Synchronize to ensure max is computed (DeviceReduce writes to host pointer)
-        cudaStreamSynchronize(stream);
+        err = cudaStreamSynchronize(stream);
+        if (err != cudaSuccess) {
+            cudaFree(d_temp_storage);
+            TORCH_CHECK(false, "CUDA error synchronizing stream after max reduction: ", cudaGetErrorString(err));
+        }
 
         // Free temporary storage
-        if (d_temp_storage != nullptr) { cudaFree(d_temp_storage); }
+        if (d_temp_storage != nullptr) {
+            err = cudaFree(d_temp_storage);
+            if (err != cudaSuccess) {
+                TORCH_CHECK(false, "CUDA error freeing temporary storage: ", cudaGetErrorString(err));
+            }
+        }
 
         // Determine if we need to scale
         if (max_val <= 1.0f) {
@@ -365,13 +382,19 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
         int num_blocks   = (total_pixels + num_threads - 1) / num_threads;
 
         convert_to_uint8_kernel<<<num_blocks, num_threads, 0, stream>>>(input_flat.data_ptr<float>(), images_uint8.data_ptr<uint8_t>(), needs_scale_back, total_pixels);
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            TORCH_CHECK(false, "CUDA error in convert_to_uint8_kernel: ", cudaGetErrorString(err));
+        }
     }
 
     // Prepare reference histogram(s) - convert to float32 and make contiguous
     torch::Tensor ref_hist = reference_histogram.contiguous();
     if (ref_hist.dtype() != torch::kFloat32) {
-        // Need to convert, but we'll do it on CPU for simplicity (small tensor)
+        // Convert to float32 while preserving device
         ref_hist = ref_hist.to(torch::kFloat32).contiguous();
+        // Ensure it's still on CUDA after conversion
+        TORCH_CHECK(ref_hist.is_cuda(), "reference_histogram must remain on CUDA device after dtype conversion");
     }
 
     bool per_channel_histograms = false;
@@ -382,7 +405,10 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
         // Per-channel histograms: (C, 256)
         per_channel_histograms = true;
     } else {
-        TORCH_CHECK(false, "reference_histogram must be 1D with 256 elements or 2D with shape (C, 256)");
+        TORCH_CHECK(false, "reference_histogram must be 1D with 256 elements or 2D with shape (C, 256), "
+                    "where C is the number of channels in input_images. "
+                    "Got reference_histogram with shape ", ref_hist.sizes(), 
+                    " but input_images has ", C, " channels (shape: ", input_images.sizes(), ")");
     }
 
     // Pre-compute reference CDFs on GPU using CUB
@@ -400,34 +426,63 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
         cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, ref_hist.data_ptr<float>(), &ref_sum, num_bins, stream);
 
         // Allocate temporary storage
-        cudaMalloc(&d_temp_storage, temp_storage_bytes);
+        err = cudaMalloc(&d_temp_storage, temp_storage_bytes);
+        if (err != cudaSuccess) {
+            TORCH_CHECK(false, "CUDA error allocating temporary storage for reference histogram sum: ", cudaGetErrorString(err));
+        }
 
         // Run sum reduction
         cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, ref_hist.data_ptr<float>(), &ref_sum, num_bins, stream);
 
         // Synchronize to ensure sum is computed (DeviceReduce writes to host pointer)
-        cudaStreamSynchronize(stream);
+        err = cudaStreamSynchronize(stream);
+        if (err != cudaSuccess) {
+            cudaFree(d_temp_storage);
+            TORCH_CHECK(false, "CUDA error synchronizing stream after reference histogram sum: ", cudaGetErrorString(err));
+        }
 
         // Normalize histogram (copy first to avoid modifying original)
         torch::Tensor ref_hist_norm = torch::empty_like(ref_hist);
-        cudaMemcpyAsync(ref_hist_norm.data_ptr<float>(), ref_hist.data_ptr<float>(), num_bins * sizeof(float), cudaMemcpyDeviceToDevice, stream);
+        err = cudaMemcpyAsync(ref_hist_norm.data_ptr<float>(), ref_hist.data_ptr<float>(), num_bins * sizeof(float), cudaMemcpyDeviceToDevice, stream);
+        if (err != cudaSuccess) {
+            cudaFree(d_temp_storage);
+            TORCH_CHECK(false, "CUDA error copying reference histogram: ", cudaGetErrorString(err));
+        }
         int num_threads = THREADS_PER_BLOCK;
         int num_blocks  = (num_bins + num_threads - 1) / num_threads;
         normalize_histogram_kernel<<<num_blocks, num_threads, 0, stream>>>(ref_hist_norm.data_ptr<float>(), ref_sum, num_bins);
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            cudaFree(d_temp_storage);
+            TORCH_CHECK(false, "CUDA error in normalize_histogram_kernel: ", cudaGetErrorString(err));
+        }
 
         // Compute CDF using CUB DeviceScan::InclusiveSum
         // Determine temporary storage requirements for scan
         cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes, ref_hist_norm.data_ptr<float>(), ref_cdf.data_ptr<float>(), num_bins, stream);
 
         // Reallocate if needed (scan might need more storage)
-        cudaFree(d_temp_storage);
-        if (temp_storage_bytes > 0) { cudaMalloc(&d_temp_storage, temp_storage_bytes); }
+        err = cudaFree(d_temp_storage);
+        if (err != cudaSuccess) {
+            TORCH_CHECK(false, "CUDA error freeing temporary storage before scan: ", cudaGetErrorString(err));
+        }
+        if (temp_storage_bytes > 0) {
+            err = cudaMalloc(&d_temp_storage, temp_storage_bytes);
+            if (err != cudaSuccess) {
+                TORCH_CHECK(false, "CUDA error allocating temporary storage for scan: ", cudaGetErrorString(err));
+            }
+        }
 
         // Run inclusive scan (prefix sum)
         cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes, ref_hist_norm.data_ptr<float>(), ref_cdf.data_ptr<float>(), num_bins, stream);
 
         // Free temporary storage
-        if (d_temp_storage != nullptr) { cudaFree(d_temp_storage); }
+        if (d_temp_storage != nullptr) {
+            err = cudaFree(d_temp_storage);
+            if (err != cudaSuccess) {
+                TORCH_CHECK(false, "CUDA error freeing temporary storage after scan: ", cudaGetErrorString(err));
+            }
+        }
     }
 
     // Allocate output tensor
@@ -457,14 +512,29 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
     int threads_per_block = THREADS_PER_BLOCK;
 
     process_channel_kernel<<<C, threads_per_block, shared_mem_size, stream>>>(images_uint8.data_ptr<uint8_t>(), output.data_ptr<float>(), ref_data_ptr, channel_buffers.data_ptr<float>(), N, C, H, W, num_bins, total_pixels_per_channel, per_channel_histograms);
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error in process_channel_kernel: ", cudaGetErrorString(err), 
+                   ". This may indicate invalid input shapes, out-of-bounds memory access, or device mismatch. "
+                   "Input shape: (", N, ", ", C, ", ", H, ", ", W, "), "
+                   "Reference histogram shape: ", reference_histogram.sizes(), 
+                   ", per_channel_histograms: ", per_channel_histograms);
+    }
 
     // Scale and clamp output
     int total_pixels = N * C * H * W;
     int num_blocks   = (total_pixels + num_threads - 1) / num_threads;
     scale_clamp_output_kernel<<<num_blocks, num_threads, 0, stream>>>(output.data_ptr<float>(), needs_scale_back, false, total_pixels);
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error in scale_clamp_output_kernel: ", cudaGetErrorString(err));
+    }
 
     // Synchronize before final dtype conversion
-    cudaStreamSynchronize(stream);
+    err = cudaStreamSynchronize(stream);
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA error synchronizing stream: ", cudaGetErrorString(err));
+    }
 
     // Preserve original dtype (matching PyTorch backend logic)
     if (was_uint8_or_high_range && !needs_scale_back) {
