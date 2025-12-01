@@ -1,5 +1,0 @@
-# Production dependencies for stainx
-# Install with: pip install -r requirements.txt
-
-torch>=2.0.0
-
