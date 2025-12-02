@@ -46,12 +46,16 @@ jobs:
           mkdocs build --strict
 
       - name: Trigger Read the Docs build (optional)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.READTHEDOCS_API_TOKEN != ''
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          curl -X POST https://readthedocs.org/api/v3/projects/stainx/versions/latest/builds/ \
-            -H "Authorization: token ${{ secrets.READTHEDOCS_API_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{}'
+          if [ -n "${{ secrets.READTHEDOCS_API_TOKEN }}" ]; then
+            curl -X POST https://readthedocs.org/api/v3/projects/stainx/versions/latest/builds/ \
+              -H "Authorization: token ${{ secrets.READTHEDOCS_API_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d '{}'
+          else
+            echo "Read the Docs API token not configured. Read the Docs will build automatically via webhook."
+          fi
         continue-on-error: true
 
   lint:
