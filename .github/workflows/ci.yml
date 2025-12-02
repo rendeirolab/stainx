@@ -24,13 +24,18 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
+      - name: Create virtual environment
+        run: uv venv
+
       - name: Install documentation dependencies
         run: |
+          source .venv/bin/activate
           uv pip install mkdocs mkdocstrings[python] mkdocs-material pymdown-extensions
 
       - name: Build documentation
         run: |
-          uv run mkdocs build --strict
+          source .venv/bin/activate
+          mkdocs build --strict
 
   lint:
     name: Lint
@@ -49,8 +54,12 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
+      - name: Create virtual environment
+        run: uv venv
+
       - name: Install linting dependencies
         run: |
+          source .venv/bin/activate
           uv pip install ruff
 
       - name: Install clang-format
@@ -64,7 +73,8 @@ jobs:
 
       - name: Check Python code with ruff
         run: |
-          uv run ruff check .
+          source .venv/bin/activate
+          ruff check .
 
   test:
     name: Test Python ${{ matrix.python-version }}
