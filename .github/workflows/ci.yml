@@ -3,14 +3,6 @@ name: CI
 on:
   push:
     branches: [main]
-    paths:
-      - 'docs/**'
-      - 'mkdocs.yml'
-      - '.readthedocs.yaml'
-      - 'requirements-docs.txt'
-      - 'src/**'
-      - 'README.md'
-      - 'CONTRIBUTING.md'
   release:
     types: [published]
   workflow_dispatch:
