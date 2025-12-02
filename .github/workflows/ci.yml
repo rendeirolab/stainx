@@ -26,19 +26,11 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Cache uv dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/uv
-          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-uv-
-
       - name: Install dependencies
         env:
           UV_CONCURRENT_DOWNLOADS: 50
         run: |
-          uv sync --group dev
+          uv sync --dev
 
       - name: Install clang-format
         run: |
@@ -75,19 +67,11 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
-      - name: Cache uv dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/uv
-          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-uv-
-
       - name: Install dependencies
         env:
           UV_CONCURRENT_DOWNLOADS: 50
         run: |
-          uv sync --group dev
+          uv sync --dev
 
       - name: Build CUDA extension (if CUDA available)
         run: |
