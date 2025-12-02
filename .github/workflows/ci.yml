@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  lint:
-    name: Lint
+  docs:
+    name: Build Documentation
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -24,11 +24,34 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Install dependencies
-        env:
-          UV_CONCURRENT_DOWNLOADS: 50
+      - name: Install documentation dependencies
         run: |
-          uv sync --dev
+          uv pip install mkdocs mkdocstrings[python] mkdocs-material pymdown-extensions
+
+      - name: Build documentation
+        run: |
+          uv run mkdocs build --strict
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    needs: docs
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install linting dependencies
+        run: |
+          uv pip install ruff
 
       - name: Install clang-format
         run: |
@@ -46,7 +69,7 @@ jobs:
   test:
     name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
-    needs: lint
+    needs: [docs, lint]
     strategy:
       fail-fast: false
       matrix:
