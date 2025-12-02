@@ -4,8 +4,6 @@ build:
   os: ubuntu-22.04
   tools:
     python: "3.12"
-  commands:
-    - export PYTHONPATH="${PYTHONPATH}:${PWD}/src"
 
 mkdocs:
   configuration: mkdocs.yml
@@ -20,6 +18,9 @@ python:
         - mkdocstrings[python]>=0.24.0
         - mkdocs-material>=9.0.0
         - pymdown-extensions>=10.0.0
+    - method: pip
+      path: .
+      extra_requirements: []
 
 formats:
   - pdf
