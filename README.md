@@ -1,46 +1,114 @@
-# stainx
+<div align="center">
 
-GPU-accelerated stain normalization.
+<h1>StainX</h1>
+<img src="https://raw.githubusercontent.com/rendeirolab/stainx/refs/heads/main/assets/temporary-logo.svg"/>
+
+![CI](https://github.com/rendeirolab/stainx/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+</div>
+
+
+GPU-accelerated stain normalization for histopathology images.
+
+## Features
+
+- **Multiple algorithms**: Histogram Matching, Reinhard, and Macenko normalization
+- **Automatic backend selection**: PyTorch (CPU/GPU) or optimized CUDA kernels
+- **Batch processing**: Efficient processing of multiple images
+- **Flexible device support**: CPU, CUDA, or custom device selection
 
 ## Installation
 
 ### Requirements
 
-- Python >=3.12
+- Python >=3.10
 - PyTorch >=2.0.0
 - CUDA (optional, for GPU acceleration)
+
+### Install from PyPI
+
+```bash
+pip install stainx
+```
 
 ### Install from source
 
 ```bash
+git clone https://github.com/rendeirolab/stainx.git
+cd stainx
 pip install .
 ```
 
-The package will automatically build CUDA extensions if CUDA is available. If CUDA is not available, the package will install without CUDA support.
+CUDA extensions will be automatically built if CUDA is available.
 
-### Using Make
+## Quick Start
 
-Alternatively, you can use the provided Makefile:
+```python
+import torch
+from stainx import Reinhard, Macenko, HistogramMatching
 
-```bash
-make build      # Build the package (includes CUDA extension if available)
-make clean      # Clean build artifacts and cache files
-make test       # Run tests
-make lint       # Check code for linting issues
-make fix        # Auto-fix linting issues and format code
-make help       # Show all available targets
+# Load your images as torch.Tensor (N, C, H, W) or (N, H, W, C)
+reference_image = torch.randn(1, 3, 512, 512)  # Reference image
+source_images = torch.randn(10, 3, 512, 512)  # Images to normalize
+
+# Reinhard normalization
+normalizer = Reinhard(device="cuda")  # or "cpu"
+normalizer.fit(reference_image)
+normalized = normalizer.transform(source_images)
+
+# Macenko normalization
+normalizer = Macenko(device="cuda")
+normalizer.fit(reference_image)
+normalized = normalizer.transform(source_images)
+
+# Histogram Matching
+normalizer = HistogramMatching(device="cuda", channel_axis=1)
+normalizer.fit(reference_image)
+normalized = normalizer.transform(source_images)
 ```
 
-### Verify Installation
+## API
 
-You can verify the installation and check which backend is being used (CUDA or PyTorch) with the following command:
+All normalizers follow a scikit-learn-like interface:
 
-```bash
-uvx --with "stainx @ git+https://github.com/rendeirolab/stainx.git" --with numpy --with torch python -c "import torch; from stainx import Reinhard; cuda_avail = torch.cuda.is_available(); print(f'CUDA available: {cuda_avail}'); device = 'cuda' if cuda_avail else 'cpu'; n = Reinhard(device=device); print(f'Backend selected: {n.backend}'); print(f'Backend implementation: {n._get_backend_impl().__class__.__name__}'); print('✅ CUDA backend' if n.backend == 'cuda' else '✅ PyTorch backend')"
+- `fit(reference_images)`: Compute normalization parameters from reference image(s)
+- `transform(images)`: Apply normalization to images
+- `fit_transform(images)`: Fit and transform in one step
+
+### Available Normalizers
+
+- `Reinhard`: Reinhard color normalization
+- `Macenko`: Macenko stain separation and normalization
+- `HistogramMatching`: Histogram matching normalization
+
+### Backend Selection
+
+Backends are automatically selected based on device availability:
+- **CUDA**: Used when CUDA is available and device is set to CUDA
+- **PyTorch**: Fallback backend, works on CPU and GPU
+
+You can explicitly specify a backend:
+
+```python
+normalizer = Reinhard(device="cuda", backend="pytorch")  # Force PyTorch backend
 ```
 
-This command uses `uvx` to temporarily install stainx from GitHub along with its dependencies (numpy and torch), then runs a Python script that:
-- Checks if CUDA is available
-- Creates a Reinhard normalizer instance
-- Prints which backend is selected (CUDA or PyTorch)
-- Displays the backend implementation class name
+## Requirements
+
+- Python >=3.12
+- PyTorch >=2.0.0
+- CUDA Toolkit (optional, for CUDA backend)
+
+## License
+
+This project is licensed under the GNU General Public License v3 (GPL-3.0-or-later).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on contributing to StainX.
+
+## Links
+
+- **GitHub**: https://github.com/rendeirolab/stainx
+- **Issues**: https://github.com/rendeirolab/stainx/issues
+
