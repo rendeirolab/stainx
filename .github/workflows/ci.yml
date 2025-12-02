@@ -29,9 +29,7 @@ jobs:
       - name: Cache uv dependencies
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cache/uv
-            .venv
+          path: ~/.cache/uv
           key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
           restore-keys: |
             ${{ runner.os }}-uv-
@@ -80,12 +78,9 @@ jobs:
       - name: Cache uv dependencies
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cache/uv
-            .venv
-          key: ${{ runner.os }}-uv-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            ${{ runner.os }}-uv-${{ matrix.python-version }}-
             ${{ runner.os }}-uv-
 
       - name: Install dependencies
