@@ -53,13 +53,13 @@ jobs:
             -d '{}')
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | sed '$d')
-          if [ "$http_code" -eq 201 ] || [ "$http_code" -eq 200 ]; then
-            echo "✅ Read the Docs build triggered successfully!"
+          if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ] || [ "$http_code" -eq 202 ]; then
+            echo "Read the Docs build triggered successfully! (HTTP $http_code)"
             echo "$body" | jq '.' 2>/dev/null || echo "$body"
           else
-            echo "::warning::Read the Docs build trigger returned HTTP $http_code"
+            echo "::error::Read the Docs build trigger failed with HTTP $http_code"
             echo "$body"
-            exit 0
+            exit 1
           fi
         continue-on-error: true
 
