@@ -32,6 +32,7 @@ classifiers = [
 dev = [
     "ipykernel>=7.0.1",
     "mkdocs>=1.6.1",
+    "mkdocstrings[python]>=0.24.0",
     "taskipy>=1.14.1",
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",

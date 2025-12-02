@@ -1,0 +1,74 @@
+site_name: StainX Documentation
+site_description: GPU-accelerated stain normalization for histopathology images
+site_url: https://stainx.readthedocs.io/
+
+repo_name: rendeirolab/stainx
+repo_url: https://github.com/rendeirolab/stainx
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.annotate
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - admonition
+  - pymdownx.details
+  - tables
+  - attr_list
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Quick Start: quickstart.md
+  - API Reference:
+    - API Overview: api/index.md
+    - Normalizers:
+      - HistogramMatching: api/histogram_matching.md
+      - Reinhard: api/reinhard.md
+      - Macenko: api/macenko.md
+    - Base Classes:
+      - StainNormalizerBase: api/base.md
+    - Backends:
+      - Backend Overview: api/backends.md
+  - Examples: examples.md
+  - Changelog: changelog.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: true
+
+

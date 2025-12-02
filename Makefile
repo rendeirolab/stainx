@@ -3,13 +3,14 @@
 #
 # This software is distributed under the terms of the GNU General Public License v3 (GPLv3).
 # See the LICENSE file for details.
-.PHONY: build clean test install install-dev help lint fix
+.PHONY: build clean test install install-dev help lint fix docs
 
 # Variables
 UV := $(shell PATH="$(HOME)/.local/bin:$$PATH" command -v uv 2>/dev/null || echo "$(HOME)/.local/bin/uv")
 PYTHON := $(UV) run python
 PIP := $(UV) run pip
 PYTEST := $(UV) run pytest
+MKDOCS := $(UV) run mkdocs
 
 # Default target
 help:
@@ -21,6 +22,7 @@ help:
 	@echo "  make test        - Run tests"
 	@echo "  make lint        - Check code for linting issues"
 	@echo "  make fix         - Auto-fix linting issues and format code"
+	@echo "  make docs        - Build documentation to verify it's buildable"
 
 # Build distribution packages (wheels + sdist) - optimized for PyPI publishing
 build:
@@ -75,6 +77,7 @@ clean:
 	rm -rf .ruff_cache/
 	rm -rf .tox/
 	rm -rf .hypothesis/
+	rm -rf site/
 	# Remove Python cache files and directories
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
@@ -115,4 +118,18 @@ fix:
 	$(UV) run ruff format .
 	@find src/stainx_cuda/csrc/ -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -o -name "*.cu" -o -name "*.cuh" | xargs clang-format -i
 	@echo "Code formatting and linting fixes complete!"
+
+# Build documentation to verify it's buildable
+docs:
+	@echo "Building documentation..."
+	@if [ ! -d ".venv" ]; then \
+		echo "Virtual environment not found. Running 'make install-dev' first..."; \
+		$(MAKE) install-dev; \
+	fi
+	@if ! $(UV) run python -c "import mkdocs" 2>/dev/null || ! $(UV) run python -c "import material" 2>/dev/null; then \
+		echo "Installing mkdocs and dependencies..."; \
+		$(UV) pip install mkdocs mkdocstrings[python] mkdocs-material pymdown-extensions; \
+	fi
+	$(MKDOCS) build --strict
+	@echo "Documentation build successful!"
 
