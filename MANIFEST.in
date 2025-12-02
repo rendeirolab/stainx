@@ -1,0 +1,59 @@
+# Include essential files
+include README.md
+include pyproject.toml
+include setup.py
+
+# Include source code
+recursive-include src/stainx *.py
+recursive-include src/stainx_cuda *.py
+recursive-include src/stainx_cuda/csrc *.cpp *.cu *.h *.hpp *.cuh
+
+# Exclude build artifacts
+global-exclude *.py[cod]
+global-exclude *.so
+global-exclude __pycache__
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+
+# Exclude build directories
+prune build
+prune dist
+prune *.egg-info
+prune .eggs
+
+# Exclude development and IDE files
+prune .vscode
+prune .idea
+prune .github
+prune .venv
+prune .pytest_cache
+prune .mypy_cache
+prune .ruff_cache
+prune .tox
+prune .hypothesis
+prune .cache
+prune htmlcov
+
+# Exclude test files
+prune tests
+
+# Exclude benchmark files
+prune benchmarks
+
+# Exclude demo and example files
+exclude *.svs
+exclude *.log
+
+# Exclude development documentation
+exclude ARCHITECTURE.md
+exclude DESIGN_PLANS.md
+
+# Exclude build tools
+exclude Makefile
+exclude uv.lock
+
+# Exclude coverage files
+global-exclude .coverage
+global-exclude coverage.xml
+global-exclude .coverage.*
+
