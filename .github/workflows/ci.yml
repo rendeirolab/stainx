@@ -3,6 +3,14 @@ name: CI
 on:
   push:
     branches: [main]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - '.readthedocs.yaml'
+      - 'requirements-docs.txt'
+      - 'src/**'
+      - 'README.md'
+      - 'CONTRIBUTING.md'
   release:
     types: [published]
   workflow_dispatch:
@@ -36,6 +44,15 @@ jobs:
         run: |
           source .venv/bin/activate
           mkdocs build --strict
+
+      - name: Trigger Read the Docs build (optional)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.READTHEDOCS_API_TOKEN != ''
+        run: |
+          curl -X POST https://readthedocs.org/api/v3/projects/stainx/versions/latest/builds/ \
+            -H "Authorization: token ${{ secrets.READTHEDOCS_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{}'
+        continue-on-error: true
 
   lint:
     name: Lint

@@ -19,6 +19,7 @@ htmlcov/
 
 # Virtual environments
 .venv
+.venv-rtd
 
 .idea/
 

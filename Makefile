@@ -22,7 +22,7 @@ help:
 	@echo "  make test        - Run tests"
 	@echo "  make lint        - Check code for linting issues"
 	@echo "  make fix         - Auto-fix linting issues and format code"
-	@echo "  make docs        - Build documentation to verify it's buildable"
+	@echo "  make docs        - Build documentation (matches Read the Docs)"
 
 # Build distribution packages (wheels + sdist) - optimized for PyPI publishing
 build:
@@ -78,6 +78,7 @@ clean:
 	rm -rf .tox/
 	rm -rf .hypothesis/
 	rm -rf site/
+	rm -rf .venv-rtd/
 	# Remove Python cache files and directories
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
@@ -119,17 +120,18 @@ fix:
 	@find src/stainx_cuda/csrc/ -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -o -name "*.cu" -o -name "*.cuh" | xargs clang-format -i
 	@echo "Code formatting and linting fixes complete!"
 
-# Build documentation to verify it's buildable
+# Build documentation (matches Read the Docs build process)
 docs:
-	@echo "Building documentation..."
-	@if [ ! -d ".venv" ]; then \
-		echo "Virtual environment not found. Running 'make install-dev' first..."; \
-		$(MAKE) install-dev; \
+	@echo "Building documentation (matching Read the Docs process)..."
+	@if [ ! -d ".venv-rtd" ]; then \
+		echo "Creating isolated virtual environment..."; \
+		$(UV) venv .venv-rtd --seed; \
 	fi
-	@if ! $(UV) run python -c "import mkdocs" 2>/dev/null || ! $(UV) run python -c "import material" 2>/dev/null; then \
-		echo "Installing mkdocs and dependencies..."; \
-		$(UV) pip install mkdocs mkdocstrings[python] mkdocs-material pymdown-extensions; \
-	fi
-	$(MKDOCS) build --strict
-	@echo "Documentation build successful!"
+	@echo "Installing dependencies from requirements-docs.txt..."
+	@$(UV) pip install --python .venv-rtd/bin/python -r requirements-docs.txt
+	@echo "Installing stainx package..."
+	@$(UV) pip install --python .venv-rtd/bin/python -e .
+	@echo "Building documentation with mkdocs..."
+	@.venv-rtd/bin/mkdocs build --strict
+	@echo "Documentation build successful! Output in site/"
 
