@@ -118,6 +118,37 @@ make fix          # Auto-fix issues
    - Add usage examples
    - Update README if needed
 
+### Adding New Backends
+
+To add a new backend (e.g., OpenCL, Metal):
+
+1. **Create backend base class** in `src/stainx/backends/`:
+   - Inherit from a common interface or create new base class
+   - Implement `__init__()` with device handling
+   - Define required methods (e.g., `transform()`)
+
+2. **Implement backend classes** for each normalizer:
+   - Create classes like `HistogramMatching<Backend>`, `Reinhard<Backend>`, `Macenko<Backend>`
+   - Inherit from the backend base class
+   - Implement `transform()` method with algorithm-specific logic
+
+3. **Update backend selection** in `src/stainx/normalizers/_template.py`:
+   - Modify `_select_backend()` to detect and select new backend
+   - Add availability check (similar to `CUDA_AVAILABLE`)
+
+4. **Update normalizer classes**:
+   - Add `_get_<backend>_class()` method in each normalizer
+   - Update `_get_backend_impl()` to handle new backend
+
+5. **Export backend classes** in `src/stainx/backends/__init__.py`
+
+6. **Add tests**:
+   - Test backend availability detection
+   - Test correctness against reference implementation
+   - Ensure graceful fallback if backend unavailable
+
+**Note:** Currently, the `fit()` function executes only PyTorch routines. To improve flexibility and fully support all backends (such as CUDA), consider implementing backend-specific `fit()` logic so that fitting is performed using the selected backend, not just PyTorch. This will ensure consistency and performance across all supported backends.
+
 ### Code Style
 
 - Python: Follow PEP 8, use `ruff` for linting
