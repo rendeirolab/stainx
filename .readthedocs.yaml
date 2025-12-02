@@ -13,8 +13,12 @@ python:
   install:
     - method: pip
       path: .
-      extra_requirements:
-        - dev
+    - method: pip
+      packages:
+        - mkdocs>=1.6.1
+        - mkdocstrings[python]>=0.24.0
+        - mkdocs-material>=9.0.0
+        - pymdown-extensions>=10.0.0
 
 formats:
   - pdf
