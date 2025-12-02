@@ -11,13 +11,7 @@ mkdocs:
 
 python:
   install:
-    - method: pip
-      packages:
-        - torch>=2.0.0
-        - mkdocs>=1.6.1
-        - mkdocstrings[python]>=0.24.0
-        - mkdocs-material>=9.0.0
-        - pymdown-extensions>=10.0.0
+    - requirements: requirements-docs.txt
     - method: pip
       path: .
       extra_requirements: []
