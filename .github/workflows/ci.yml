@@ -38,7 +38,7 @@ jobs:
         env:
           UV_CONCURRENT_DOWNLOADS: 50
         run: |
-          uv sync --frozen --dev
+          uv sync --group dev
 
       - name: Install clang-format
         run: |
@@ -87,7 +87,7 @@ jobs:
         env:
           UV_CONCURRENT_DOWNLOADS: 50
         run: |
-          uv sync --frozen --dev
+          uv sync --group dev
 
       - name: Build CUDA extension (if CUDA available)
         run: |
