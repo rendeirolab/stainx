@@ -8,10 +8,14 @@ import torch
 try:
     import stainx_cuda
 
-    CUDA_AVAILABLE = True
+    # Check if functions are actually available, not just if package imports
+    CUDA_AVAILABLE = getattr(stainx_cuda, "FUNCTIONS_AVAILABLE", False)
+    if not CUDA_AVAILABLE:
+        print("DEBUG: stainx_cuda imported but FUNCTIONS_AVAILABLE=False - CUDA backend not available")
 except ImportError:
     CUDA_AVAILABLE = False
     stainx_cuda = None
+    print("DEBUG: stainx_cuda package could not be imported - CUDA backend not available")
 
 
 class CUDABackendBase:

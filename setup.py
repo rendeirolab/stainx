@@ -9,12 +9,15 @@
 import contextlib
 import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 from typing import ClassVar
 
 import torch
 import torch.utils.cpp_extension as torch_cpp_ext
 from setuptools import find_packages, setup
+from setuptools.command.install import install
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 
@@ -197,6 +200,80 @@ class CUDAExtensionBuilder:
         return BuildExtension.with_options(use_ninja=use_ninja)
 
 
+class PostInstallCommand(install):
+    """Post-installation hook to build CUDA extension after wheel installation."""
+
+    def run(self):
+        """Run the standard install, then build CUDA extension."""
+        # Run the standard install
+        install.run(self)
+
+        # Build CUDA extension after installation
+        print("\n" + "=" * 80)
+        print("Building CUDA extension (if CUDA is available)...")
+        print("=" * 80)
+
+        # Check if CUDA is available
+        if not torch.cuda.is_available():
+            print("CUDA not available. Skipping CUDA extension build.")
+            print("=" * 80)
+            return
+
+        # Find the installed stainx_cuda package location
+        try:
+            import stainx_cuda
+
+            package_dir = Path(stainx_cuda.__file__).parent
+            print(f"DEBUG: Found stainx_cuda at: {package_dir}")
+        except (ImportError, AttributeError):
+            print("Warning: Could not find installed stainx_cuda package.")
+            print("=" * 80)
+            return
+
+        # Check if source files are available
+        csrc_dir = package_dir / "csrc"
+        if not csrc_dir.exists():
+            print(f"Warning: CUDA source files not found at {csrc_dir}")
+            print("CUDA extension cannot be built from wheel. Install from source to build CUDA extension.")
+            print("=" * 80)
+            return
+
+        # Build the extension in-place in the installed location
+        try:
+            original_cwd = os.getcwd()
+            project_root = Path(__file__).parent
+            os.chdir(project_root)
+
+            print(f"DEBUG: Building extension from: {project_root}")
+            print(f"DEBUG: Source files location: {csrc_dir}")
+
+            # Use setup.py build_ext --inplace
+            result = subprocess.run([sys.executable, str(project_root / "setup.py"), "build_ext", "--inplace"], capture_output=True, text=True, cwd=str(project_root))
+
+            if result.returncode == 0:
+                print("✓ CUDA extension built successfully!")
+                if result.stdout:
+                    print(result.stdout)
+            else:
+                print("⚠ CUDA extension build failed:")
+                if result.stdout:
+                    print("STDOUT:", result.stdout)
+                if result.stderr:
+                    print("STDERR:", result.stderr)
+                print("\nYou can still use the PyTorch backend.")
+
+            os.chdir(original_cwd)
+        except Exception as e:
+            print(f"⚠ Error building CUDA extension: {e}")
+            print("You can still use the PyTorch backend.")
+            if os.environ.get("STAINX_DEBUG_BUILD"):
+                import traceback
+
+                traceback.print_exc()
+
+        print("=" * 80)
+
+
 # Automatically detect and set CUDA architectures
 if "TORCH_CUDA_ARCH_LIST" not in os.environ:
     if torch.cuda.is_available():
@@ -285,12 +362,14 @@ print(f"DEBUG: extensions is truthy = {bool(extensions)}")
 
 if extensions:
     setup_kwargs["ext_modules"] = extensions
-    setup_kwargs["cmdclass"] = {"build_ext": build_ext}
+    setup_kwargs["cmdclass"] = {"build_ext": build_ext, "install": PostInstallCommand}
     print(f"DEBUG: Added ext_modules with {len(extensions)} extension(s)")
-    print("DEBUG: Added cmdclass with build_ext")
+    print("DEBUG: Added cmdclass with build_ext and PostInstallCommand")
 else:
     print("DEBUG: No extensions to add (extensions is empty or None)")
     print("DEBUG: setup_kwargs will not include ext_modules")
+    # Still add post-install hook to try building if CUDA becomes available
+    setup_kwargs["cmdclass"] = {"install": PostInstallCommand}
 
 print("DEBUG: Calling setup()...")
 print("=" * 80)
