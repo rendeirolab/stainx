@@ -9,6 +9,7 @@
 import contextlib
 import os
 import re
+import shutil
 from pathlib import Path
 from typing import ClassVar
 
@@ -37,11 +38,12 @@ class CUDADeviceInfo:
     def __init__(self):
         self.cuda_available = torch.cuda.is_available()
         if not self.cuda_available:
-            print("CUDA not available. Skipping CUDA extension build.")
+            print("CUDA device not available at build time. Will build for architectures specified in TORCH_CUDA_ARCH_LIST or common architectures.")
             self.device = None
             self.device_name = None
             self.device_capability = None
-            self.compute_capability = None
+            # Use a default architecture for define_macros (actual archs come from TORCH_CUDA_ARCH_LIST)
+            self.compute_capability = 75  # Default fallback
             return
 
         self.device = torch.cuda.current_device()
@@ -56,10 +58,15 @@ class CUDADeviceInfo:
 
     def print_info(self):
         """Print device information."""
-        print("Building CUDA extension...")
-        print(f"Current device: {self.device_name}")
-        print(f"Current CUDA capability: {self.device_capability}")
-        print(f"Detected compute capability: {self.compute_capability}")
+        if self.cuda_available:
+            print("Building CUDA extension...")
+            print(f"Current device: {self.device_name}")
+            print(f"Current CUDA capability: {self.device_capability}")
+            print(f"Detected compute capability: {self.compute_capability}")
+        else:
+            print("Building CUDA extension (CUDA device not available at build time)...")
+            if "TORCH_CUDA_ARCH_LIST" in os.environ:
+                print(f"Using TORCH_CUDA_ARCH_LIST: {os.environ['TORCH_CUDA_ARCH_LIST']}")
 
 
 class PyTorchVersionChecker:
@@ -126,11 +133,21 @@ class CUDAExtensionBuilder:
         self.version_checker = PyTorchVersionChecker()
         self.flags_manager = NVCCFlagsManager()
 
+    def _check_nvcc_available(self):
+        """Check if nvcc (CUDA compiler) is available."""
+        return shutil.which("nvcc") is not None
+
     def build(self):
         """Build the CUDA extension configuration."""
-        if not self.device_info.cuda_available:
+        # Check if nvcc is available (CUDA toolkit installed)
+        if not self._check_nvcc_available():
+            print("nvcc not found. CUDA extension will not be built.")
+            print("To build CUDA extension, install CUDA Toolkit and ensure nvcc is in PATH.")
             return []
 
+        # Always try to build CUDA extension, even if CUDA device is not available
+        # (CUDA toolkit might still be available for compilation)
+        
         # Print device and version info
         self.device_info.print_info()
         self.version_checker.check()
@@ -161,22 +178,31 @@ class CUDAExtensionBuilder:
 
 
 # Automatically detect and set CUDA architectures
-if torch.cuda.is_available() and "TORCH_CUDA_ARCH_LIST" not in os.environ:
-    from torch import cuda
+if "TORCH_CUDA_ARCH_LIST" not in os.environ:
+    if torch.cuda.is_available():
+        from torch import cuda
 
-    arch_list = []
-    for i in range(cuda.device_count()):
-        capability = cuda.get_device_capability(i)
-        arch = f"{capability[0]}.{capability[1]}"
-        arch_list.append(arch)
+        arch_list = []
+        for i in range(cuda.device_count()):
+            capability = cuda.get_device_capability(i)
+            arch = f"{capability[0]}.{capability[1]}"
+            arch_list.append(arch)
 
-    # Add PTX for the highest architecture for forward compatibility
-    if arch_list:
-        highest_arch = arch_list[-1]
-        arch_list.append(f"{highest_arch}+PTX")
+        # Add PTX for the highest architecture for forward compatibility
+        if arch_list:
+            highest_arch = arch_list[-1]
+            arch_list.append(f"{highest_arch}+PTX")
 
-    os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(arch_list)
-    print(f"Setting TORCH_CUDA_ARCH_LIST={os.environ['TORCH_CUDA_ARCH_LIST']}")
+        os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(arch_list)
+        print(f"Setting TORCH_CUDA_ARCH_LIST={os.environ['TORCH_CUDA_ARCH_LIST']}")
+    else:
+        # CUDA device not available, use common architectures for broader compatibility
+        # These cover most modern GPUs (Volta, Turing, Ampere, Ada, Hopper)
+        common_archs = ["7.0", "7.5", "8.0", "8.6", "8.9", "9.0"]
+        # Add PTX for forward compatibility
+        common_archs.append("9.0+PTX")
+        os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(common_archs)
+        print(f"CUDA device not available. Setting TORCH_CUDA_ARCH_LIST={os.environ['TORCH_CUDA_ARCH_LIST']}")
 
 # Set PyTorch library path for runtime linking
 torch_lib_path = os.path.join(os.path.dirname(torch.__file__), "lib")
