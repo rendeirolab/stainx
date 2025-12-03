@@ -139,7 +139,7 @@ class CUDAExtensionBuilder:
         print(f"DEBUG: torch.cuda.is_available() = {torch.cuda.is_available()}")
         print(f"DEBUG: CUDA_HOME = {os.environ.get('CUDA_HOME', 'NOT SET')}")
         print(f"DEBUG: CUDA_PATH = {os.environ.get('CUDA_PATH', 'NOT SET')}")
-        
+
         # Always try to build CUDA extension
         # Check if PyTorch was built with CUDA support
         if not torch.cuda.is_available():
@@ -159,7 +159,7 @@ class CUDAExtensionBuilder:
         source_files = ["bindings.cpp", "histogram_matching.cu", "reinhard.cu", "macenko.cu"]
         sources = [str(Path("src") / "stainx_cuda" / "csrc" / f) for f in source_files]
         print(f"DEBUG: source files = {sources}")
-        
+
         # Check if source files exist
         for src in sources:
             exists = os.path.exists(src)
@@ -287,7 +287,7 @@ if extensions:
     setup_kwargs["ext_modules"] = extensions
     setup_kwargs["cmdclass"] = {"build_ext": build_ext}
     print(f"DEBUG: Added ext_modules with {len(extensions)} extension(s)")
-    print(f"DEBUG: Added cmdclass with build_ext")
+    print("DEBUG: Added cmdclass with build_ext")
 else:
     print("DEBUG: No extensions to add (extensions is empty or None)")
     print("DEBUG: setup_kwargs will not include ext_modules")

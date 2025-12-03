@@ -60,18 +60,19 @@ print(f"DEBUG: Found extension files: {[str(f) for f in extension_files]}")
 try:
     print("DEBUG: Attempting to import from .stainx_cuda...")
     from .stainx_cuda import histogram_matching, macenko, reinhard
+
     print("DEBUG: Successfully imported from .stainx_cuda")
 
     # Verify functions are actually available
     print(f"DEBUG: histogram_matching callable: {callable(histogram_matching)}")
     print(f"DEBUG: macenko callable: {callable(macenko)}")
     print(f"DEBUG: reinhard callable: {callable(reinhard)}")
-    
+
     if all(callable(f) for f in [histogram_matching, macenko, reinhard]):
         FUNCTIONS_AVAILABLE = True
         print("DEBUG: All CUDA functions are available!")
         # Expose functions at package level for easy import
-        __all__ = ["histogram_matching", "macenko", "reinhard", "FUNCTIONS_AVAILABLE"]
+        __all__ = ["FUNCTIONS_AVAILABLE", "histogram_matching", "macenko", "reinhard"]
     else:
         print("DEBUG: Some CUDA functions are not callable")
         __all__ = ["FUNCTIONS_AVAILABLE"]
@@ -85,6 +86,7 @@ except Exception as e:
     print(f"DEBUG: Exception when importing CUDA extension: {type(e).__name__}: {e}")
     if os.environ.get("STAINX_DEBUG_CUDA"):
         import traceback
+
         traceback.print_exc()
     # Re-raise if it's a library loading issue (not just missing extension)
     if "cannot open shared object file" in str(e) or "libc10" in str(e) or "libtorch" in str(e):
