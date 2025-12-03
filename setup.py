@@ -147,7 +147,7 @@ class CUDAExtensionBuilder:
 
         # Always try to build CUDA extension, even if CUDA device is not available
         # (CUDA toolkit might still be available for compilation)
-        
+
         # Print device and version info
         self.device_info.print_info()
         self.version_checker.check()
