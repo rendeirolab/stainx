@@ -4,8 +4,24 @@
 # This software is distributed under the terms of the GNU General Public License v3 (GPLv3).
 # See the LICENSE file for details.
 import os
+import re
+from pathlib import Path
 
-__version__ = "0.1.0"
+
+def _get_version():
+    """Read version from pyproject.toml (single source of truth)."""
+    project_root = Path(__file__).parent.parent.parent
+    pyproject_path = project_root / "pyproject.toml"
+    with open(pyproject_path) as f:
+        for line in f:
+            if line.strip().startswith("version ="):
+                match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', line)
+                if match:
+                    return match.group(1)
+    raise RuntimeError("Could not find version in pyproject.toml")
+
+
+__version__ = _get_version()
 
 # Set PyTorch library path for runtime linking
 # This ensures the extension can find PyTorch's shared libraries at runtime

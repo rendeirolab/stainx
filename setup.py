@@ -18,6 +18,20 @@ from setuptools import find_packages, setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 
+def get_version_from_pyproject():
+    """Read version from pyproject.toml (single source of truth)."""
+    project_root = Path(__file__).parent
+    pyproject_path = project_root / "pyproject.toml"
+    with open(pyproject_path) as f:
+        for line in f:
+            if line.strip().startswith("version ="):
+                # Extract version from: version = "0.0.1"
+                match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', line)
+                if match:
+                    return match.group(1)
+    raise RuntimeError("Could not find version in pyproject.toml")
+
+
 class CUDADeviceInfo:
     """Handles CUDA device detection and information retrieval."""
 
@@ -192,7 +206,7 @@ setup_kwargs = {
     "packages": packages,
     "package_dir": {"": "src"},
     "zip_safe": False,
-    "version": "0.0.1",
+    "version": get_version_from_pyproject(),
     "description": "GPU-accelerated stain normalization",
     "author": "Samir Moustafa",
     "author_email": "smoustafa@cemm.oeaw.ac.at",
