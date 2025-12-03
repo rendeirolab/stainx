@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  docs:
+  docs-build:
     name: Build Documentation
     runs-on: ubuntu-latest
     steps:
@@ -37,36 +37,10 @@ jobs:
           source .venv/bin/activate
           mkdocs build --strict
 
-      - name: Trigger Read the Docs build
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          if [ -z "${{ secrets.READTHEDOCS_API_TOKEN }}" ]; then
-            echo "::error::Read the Docs API token not configured!"
-            echo "::error::Please add READTHEDOCS_API_TOKEN secret to enable automatic builds."
-            echo "::error::Get your token from: https://readthedocs.org/accounts/token/"
-            exit 1
-          fi
-          echo "Triggering Read the Docs build..."
-          response=$(curl -s -w "\n%{http_code}" -X POST https://readthedocs.org/api/v3/projects/stainx/versions/latest/builds/ \
-            -H "Authorization: token ${{ secrets.READTHEDOCS_API_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{}')
-          http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | sed '$d')
-          if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ] || [ "$http_code" -eq 202 ]; then
-            echo "Read the Docs build triggered successfully! (HTTP $http_code)"
-            echo "$body" | jq '.' 2>/dev/null || echo "$body"
-          else
-            echo "::error::Read the Docs build trigger failed with HTTP $http_code"
-            echo "$body"
-            exit 1
-          fi
-        continue-on-error: true
-
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    needs: docs
+    needs: docs-build
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -105,7 +79,7 @@ jobs:
   test:
     name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
-    needs: [docs, lint]
+    needs: [docs-build, lint]
     strategy:
       fail-fast: false
       matrix:
@@ -180,5 +154,36 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+
+  trigger-rtd:
+    name: Trigger Read the Docs Build
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger Read the Docs build
+        run: |
+          if [ -z "${{ secrets.READTHEDOCS_API_TOKEN }}" ]; then
+            echo "::error::Read the Docs API token not configured!"
+            echo "::error::Please add READTHEDOCS_API_TOKEN secret to enable automatic builds."
+            echo "::error::Get your token from: https://readthedocs.org/accounts/token/"
+            exit 1
+          fi
+          echo "Triggering Read the Docs build..."
+          response=$(curl -s -w "\n%{http_code}" -X POST https://readthedocs.org/api/v3/projects/stainx/versions/latest/builds/ \
+            -H "Authorization: token ${{ secrets.READTHEDOCS_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ] || [ "$http_code" -eq 202 ]; then
+            echo "Read the Docs build triggered successfully! (HTTP $http_code)"
+            echo "$body" | jq '.' 2>/dev/null || echo "$body"
+          else
+            echo "::error::Read the Docs build trigger failed with HTTP $http_code"
+            echo "$body"
+            exit 1
+          fi
+        continue-on-error: true
 
 
