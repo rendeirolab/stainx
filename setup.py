@@ -25,7 +25,6 @@ def get_version_from_pyproject():
     with open(pyproject_path) as f:
         for line in f:
             if line.strip().startswith("version ="):
-                # Extract version from: version = "0.0.1"
                 match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', line)
                 if match:
                     return match.group(1)

@@ -2769,7 +2769,7 @@ wheels = [
 
 [[package]]
 name = "stainx"
-version = "0.0.1"
+version = "0.0.2"
 source = { editable = "." }
 dependencies = [
     { name = "torch" },
