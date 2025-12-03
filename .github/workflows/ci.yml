@@ -250,8 +250,8 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Build package
-        run: uv build
+      - name: Build package (source distribution only - users build with their CUDA)
+        run: uv build --sdist
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
