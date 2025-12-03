@@ -136,7 +136,7 @@ class CUDAExtensionBuilder:
         """Build the CUDA extension configuration."""
         # Always try to build CUDA extension
         # This ensures it's built during pip install from source distribution
-        
+
         # Print device and version info
         self.device_info.print_info()
         self.version_checker.check()
