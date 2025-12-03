@@ -141,6 +141,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install packaging library
+        run: python3 -m pip install --quiet packaging
+
       - name: Check if version should trigger publish
         id: check
         run: |
