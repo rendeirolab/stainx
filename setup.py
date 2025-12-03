@@ -15,6 +15,7 @@ from typing import ClassVar
 import torch
 import torch.utils.cpp_extension as torch_cpp_ext
 from setuptools import find_packages, setup
+from setuptools.command.install import install
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 
@@ -164,6 +165,56 @@ class CUDAExtensionBuilder:
         return BuildExtension.with_options(use_ninja=use_ninja)
 
 
+class PostInstallCommand(install):
+    """Post-installation hook to build CUDA extension after wheel installation."""
+
+    def run(self):
+        """Run the standard install, then build CUDA extension."""
+        install.run(self)
+
+        if not torch.cuda.is_available():
+            return
+
+        # Try to find source files in installed package
+        try:
+            import stainx_cuda
+
+            package_dir = Path(stainx_cuda.__file__).parent
+            csrc_dir = package_dir / "csrc"
+        except (ImportError, AttributeError):
+            return
+
+        if not csrc_dir.exists():
+            return
+
+        # Build extension using JIT compilation (like torch-floating-point approach)
+        try:
+            from torch.utils.cpp_extension import load
+
+            source_files = [str(csrc_dir / "bindings.cpp"), str(csrc_dir / "histogram_matching.cu"), str(csrc_dir / "reinhard.cu"), str(csrc_dir / "macenko.cu")]
+
+            # Check all source files exist
+            if not all(Path(f).exists() for f in source_files):
+                return
+
+            # Get compute capability for architecture flags
+            device = torch.cuda.current_device()
+            capability = torch.cuda.get_device_capability(device)
+            compute_capability = capability[0] * 10 + capability[1]
+            major = compute_capability // 10
+            minor = compute_capability % 10
+
+            # Build extension in-place using JIT compilation
+            # This will create stainx_cuda.so in the package directory
+            load(name="stainx_cuda", sources=source_files, build_directory=str(package_dir), verbose=True, with_cuda=True, extra_cuda_cflags=[f"-gencode=arch=compute_{major}{minor},code=sm_{major}{minor}"])
+            print("✓ CUDA extension built successfully!")
+        except Exception:
+            if os.environ.get("STAINX_DEBUG_CUDA"):
+                import traceback
+
+                traceback.print_exc()
+
+
 # Automatically detect and set CUDA architectures (like torch-floating-point)
 if torch.cuda.is_available() and "TORCH_CUDA_ARCH_LIST" not in os.environ:
     from torch import cuda
@@ -225,6 +276,7 @@ setup_kwargs = {
 
 # Always include extension (like torch-floating-point)
 setup_kwargs["ext_modules"] = extensions
-setup_kwargs["cmdclass"] = {"build_ext": build_ext}
+cmdclass = {"build_ext": build_ext, "install": PostInstallCommand}
+setup_kwargs["cmdclass"] = cmdclass
 
 setup(**setup_kwargs)
