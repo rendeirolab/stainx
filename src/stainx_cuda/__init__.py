@@ -27,7 +27,7 @@ def _get_version():
                         match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', line)
                         if match:
                             return match.group(1)
-        raise RuntimeError("Could not find version in package metadata or pyproject.toml")
+        raise RuntimeError("Could not find version in package metadata or pyproject.toml") from None
 
 
 __version__ = _get_version()
