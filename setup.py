@@ -153,12 +153,7 @@ class CUDAExtensionBuilder:
 
         # Create extension
         extension = CUDAExtension(
-            name="stainx_cuda.stainx_cuda",
-            sources=sources,
-            include_dirs=[include_dir],
-            define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))],
-            extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags},
-            extra_link_args=["-lcudart", "-lcublas", "-lcusolver"],
+            name="stainx_cuda.stainx_cuda", sources=sources, include_dirs=[include_dir], define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))], extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags}, extra_link_args=["-lcudart", "-lcublas", "-lcusolver"]
         )
 
         return [extension]
@@ -169,32 +164,23 @@ class CUDAExtensionBuilder:
         return BuildExtension.with_options(use_ninja=use_ninja)
 
 
-# Automatically detect and set CUDA architectures
-if "TORCH_CUDA_ARCH_LIST" not in os.environ:
-    if torch.cuda.is_available():
-        from torch import cuda
+# Automatically detect and set CUDA architectures (like torch-floating-point)
+if torch.cuda.is_available() and "TORCH_CUDA_ARCH_LIST" not in os.environ:
+    from torch import cuda
 
-        arch_list = []
-        for i in range(cuda.device_count()):
-            capability = cuda.get_device_capability(i)
-            arch = f"{capability[0]}.{capability[1]}"
-            arch_list.append(arch)
+    arch_list = []
+    for i in range(cuda.device_count()):
+        capability = cuda.get_device_capability(i)
+        arch = f"{capability[0]}.{capability[1]}"
+        arch_list.append(arch)
 
-        # Add PTX for the highest architecture for forward compatibility
-        if arch_list:
-            highest_arch = arch_list[-1]
-            arch_list.append(f"{highest_arch}+PTX")
+    # Add PTX for the highest architecture for forward compatibility
+    if arch_list:
+        highest_arch = arch_list[-1]
+        arch_list.append(f"{highest_arch}+PTX")
 
-        os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(arch_list)
-        print(f"Setting TORCH_CUDA_ARCH_LIST={os.environ['TORCH_CUDA_ARCH_LIST']}")
-    else:
-        # CUDA device not available, use common architectures for broader compatibility
-        # These cover most modern GPUs (Volta, Turing, Ampere, Ada, Hopper)
-        common_archs = ["7.0", "7.5", "8.0", "8.6", "8.9", "9.0"]
-        # Add PTX for forward compatibility
-        common_archs.append("9.0+PTX")
-        os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(common_archs)
-        print(f"CUDA device not available. Setting TORCH_CUDA_ARCH_LIST={os.environ['TORCH_CUDA_ARCH_LIST']}")
+    os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(arch_list)
+    print(f"Setting TORCH_CUDA_ARCH_LIST={os.environ['TORCH_CUDA_ARCH_LIST']}")
 
 # Set PyTorch library path for runtime linking
 torch_lib_path = os.path.join(os.path.dirname(torch.__file__), "lib")
@@ -203,11 +189,16 @@ if "LD_LIBRARY_PATH" not in os.environ:
 else:
     os.environ["LD_LIBRARY_PATH"] = f"{torch_lib_path}:{os.environ['LD_LIBRARY_PATH']}"
 
-# Main setup execution
-project_root = Path(__file__).parent
-builder = CUDAExtensionBuilder(project_root)
-extensions = builder.build()
-build_ext = builder.get_build_ext_class()
+if torch.cuda.is_available():
+    print("CUDA detected, building with CUDA support.")
+    project_root = Path(__file__).parent
+    builder = CUDAExtensionBuilder(project_root)
+    extensions = builder.build()
+    build_ext = builder.get_build_ext_class()
+else:
+    print("No CUDA detected, building without CUDA support.")
+    extensions = []
+    build_ext = BuildExtension.with_options(use_ninja=os.environ.get("USE_NINJA", "true").lower() == "true")
 
 # Package discovery - use find_packages to automatically discover all packages and subpackages
 packages = find_packages(where="src")
@@ -233,8 +224,7 @@ setup_kwargs = {
 }
 
 # Always include extension (like torch-floating-point)
-if extensions:
-    setup_kwargs["ext_modules"] = extensions
-    setup_kwargs["cmdclass"] = {"build_ext": build_ext}
+setup_kwargs["ext_modules"] = extensions
+setup_kwargs["cmdclass"] = {"build_ext": build_ext}
 
 setup(**setup_kwargs)
