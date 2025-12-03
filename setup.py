@@ -137,19 +137,14 @@ class CUDAExtensionBuilder:
         # Check if CUDA_HOME or CUDA_PATH is set
         if os.environ.get("CUDA_HOME") or os.environ.get("CUDA_PATH"):
             return True
-        
+
         # Check common CUDA installation paths
-        common_cuda_paths = [
-            "/usr/local/cuda",
-            "/opt/cuda",
-            "/usr/local/cuda-12",
-            "/usr/local/cuda-11",
-        ]
+        common_cuda_paths = ["/usr/local/cuda", "/opt/cuda", "/usr/local/cuda-12", "/usr/local/cuda-11"]
         for cuda_path in common_cuda_paths:
             if os.path.exists(cuda_path) and os.path.exists(os.path.join(cuda_path, "bin", "nvcc")):
                 os.environ["CUDA_HOME"] = cuda_path
                 return True
-        
+
         return False
 
     def build(self):
