@@ -213,15 +213,7 @@ setup_kwargs = {
     "url": "https://github.com/rendeirolab/stainx",
     "long_description": long_description,
     "long_description_content_type": "text/markdown",
-    "classifiers": [
-        "Environment :: GPU :: NVIDIA CUDA",
-        "Intended Audience :: Developers",
-        "Intended Audience :: Healthcare Industry",
-        "Intended Audience :: Science/Research",
-        "Programming Language :: Python :: 3",
-        "Topic :: Scientific/Engineering",
-        "Topic :: Software Development",
-    ],
+    "classifiers": ["Environment :: GPU :: NVIDIA CUDA", "Intended Audience :: Developers", "Intended Audience :: Healthcare Industry", "Intended Audience :: Science/Research", "Programming Language :: Python :: 3", "Topic :: Scientific/Engineering", "Topic :: Software Development"],
 }
 
 # Only add extension-related arguments if CUDA extension is being built

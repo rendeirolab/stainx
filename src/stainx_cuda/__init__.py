@@ -7,6 +7,8 @@ import os
 import re
 from pathlib import Path
 
+import torch
+
 
 def _get_version():
     """Read version from pyproject.toml (single source of truth)."""
@@ -25,7 +27,6 @@ __version__ = _get_version()
 
 # Set PyTorch library path for runtime linking
 # This ensures the extension can find PyTorch's shared libraries at runtime
-import torch
 
 torch_lib_path = os.path.join(os.path.dirname(torch.__file__), "lib")
 if "LD_LIBRARY_PATH" not in os.environ:
