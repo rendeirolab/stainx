@@ -20,15 +20,13 @@ from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 def get_version_from_pyproject():
     """Read version from pyproject.toml (single source of truth)."""
+    import tomllib
+
     project_root = Path(__file__).parent
     pyproject_path = project_root / "pyproject.toml"
-    with open(pyproject_path) as f:
-        for line in f:
-            if line.strip().startswith("version ="):
-                match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', line)
-                if match:
-                    return match.group(1)
-    raise RuntimeError("Could not find version in pyproject.toml")
+    with open(pyproject_path, "rb") as f:
+        data = tomllib.load(f)
+        return data["project"]["version"]
 
 
 class CUDADeviceInfo:

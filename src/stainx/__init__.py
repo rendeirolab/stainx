@@ -1,4 +1,3 @@
-import re
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -8,6 +7,8 @@ from stainx.normalizers import HistogramMatching, Macenko, Reinhard
 
 def _get_version():
     """Get version from package metadata or pyproject.toml."""
+    import tomllib
+
     # Try to get version from installed package metadata first
     try:
         return version("stainx")
@@ -16,12 +17,9 @@ def _get_version():
         project_root = Path(__file__).parent.parent.parent
         pyproject_path = project_root / "pyproject.toml"
         if pyproject_path.exists():
-            with open(pyproject_path) as f:
-                for line in f:
-                    if line.strip().startswith("version ="):
-                        match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', line)
-                        if match:
-                            return match.group(1)
+            with open(pyproject_path, "rb") as f:
+                data = tomllib.load(f)
+                return data["project"]["version"]
         raise RuntimeError("Could not find version in package metadata or pyproject.toml") from None
 
 
