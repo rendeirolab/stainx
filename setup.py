@@ -187,14 +187,16 @@ class PostInstallCommand(install):
         if not csrc_dir.exists():
             return
 
-        # Build extension using JIT compilation (like torch-floating-point approach)
+        # Build extension using the same approach as setup.py
+        # We need to create stainx_cuda/stainx_cuda.so for "from .stainx_cuda import ..." to work
         try:
-            from torch.utils.cpp_extension import load
-
             source_files = [str(csrc_dir / "bindings.cpp"), str(csrc_dir / "histogram_matching.cu"), str(csrc_dir / "reinhard.cu"), str(csrc_dir / "macenko.cu")]
 
             # Check all source files exist
             if not all(Path(f).exists() for f in source_files):
+                if os.environ.get("STAINX_DEBUG_CUDA"):
+                    print(f"DEBUG: Missing source files. Looking in {csrc_dir}")
+                    print(f"DEBUG: Files found: {list(csrc_dir.glob('*'))}")
                 return
 
             # Get compute capability for architecture flags
@@ -204,15 +206,59 @@ class PostInstallCommand(install):
             major = compute_capability // 10
             minor = compute_capability % 10
 
-            # Build extension in-place using JIT compilation
-            # This will create stainx_cuda.so in the package directory
-            load(name="stainx_cuda", sources=source_files, build_directory=str(package_dir), verbose=True, with_cuda=True, extra_cuda_cflags=[f"-gencode=arch=compute_{major}{minor},code=sm_{major}{minor}"])
+            # Remove unwanted flags (same as in setup.py)
+            unwanted_flags = ["-D__CUDA_NO_HALF_OPERATORS__", "-D__CUDA_NO_HALF_CONVERSIONS__", "-D__CUDA_NO_BFLOAT16_CONVERSIONS__", "-D__CUDA_NO_HALF2_OPERATORS__"]
+            for flag in unwanted_flags:
+                with contextlib.suppress(ValueError):
+                    torch_cpp_ext.COMMON_NVCC_FLAGS.remove(flag)
+
+            nvcc_flags = ["--expt-relaxed-constexpr", "--use_fast_math", "-std=c++17", "-O3", "-DNDEBUG", "-gencode", f"arch=compute_{major}{minor},code=sm_{major}{minor}"]
+
+            extension = CUDAExtension(
+                name="stainx_cuda.stainx_cuda", sources=source_files, include_dirs=[str(csrc_dir)], define_macros=[("TARGET_CUDA_ARCH", str(compute_capability))], extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags}, extra_link_args=["-lcudart", "-lcublas", "-lcusolver"]
+            )
+
+            # Build the extension using BuildExtension
+            # The extension name "stainx_cuda.stainx_cuda" means it will create
+            # build_lib/stainx_cuda/stainx_cuda.so
+            # Since __init__.py does "from .stainx_cuda import ...", it expects
+            # stainx_cuda/stainx_cuda.so relative to __init__.py
+            # So we set build_lib to package_dir.parent to get the right structure
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as tmp_build_dir:
+                build_ext = BuildExtension.with_options(use_ninja=True)
+                # package_dir is the installed stainx_cuda/ directory
+                # We want to create package_dir/stainx_cuda.so for "from .stainx_cuda import ..."
+                # But BuildExtension with name="stainx_cuda.stainx_cuda" creates a subdirectory
+                # So we need build_lib such that build_lib/stainx_cuda/stainx_cuda.so = package_dir/stainx_cuda.so
+                # That means build_lib should be package_dir.parent, and we move the result
+                build_ext.build_lib = str(package_dir.parent)
+                build_ext.extensions = [extension]
+                build_ext.build_temp = tmp_build_dir
+                build_ext.inplace = False  # Don't use inplace, we'll move it manually
+                build_ext.run()
+
+                # Move the built .so file to the right location
+                # BuildExtension creates package_dir.parent/stainx_cuda/stainx_cuda.so
+                # We want package_dir/stainx_cuda.so
+                built_so = package_dir.parent / "stainx_cuda" / "stainx_cuda.so"
+                if built_so.exists():
+                    target_so = package_dir / "stainx_cuda.so"
+                    if target_so.exists():
+                        target_so.unlink()  # Remove old file if it exists
+                    built_so.rename(target_so)
+                    # Clean up the empty subdirectory
+                    with contextlib.suppress(OSError):
+                        (package_dir.parent / "stainx_cuda").rmdir()
+
             print("✓ CUDA extension built successfully!")
-        except Exception:
+        except Exception as e:
             if os.environ.get("STAINX_DEBUG_CUDA"):
                 import traceback
 
                 traceback.print_exc()
+                print(f"Error building CUDA extension: {e}")
 
 
 # Automatically detect and set CUDA architectures (like torch-floating-point)
