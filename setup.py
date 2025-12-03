@@ -134,10 +134,17 @@ class CUDAExtensionBuilder:
 
     def build(self):
         """Build the CUDA extension configuration."""
+        print("=" * 80)
+        print("DEBUG: CUDAExtensionBuilder.build() called")
+        print(f"DEBUG: torch.cuda.is_available() = {torch.cuda.is_available()}")
+        print(f"DEBUG: CUDA_HOME = {os.environ.get('CUDA_HOME', 'NOT SET')}")
+        print(f"DEBUG: CUDA_PATH = {os.environ.get('CUDA_PATH', 'NOT SET')}")
+        
         # Always try to build CUDA extension
         # Check if PyTorch was built with CUDA support
         if not torch.cuda.is_available():
-            print("CUDA not available in PyTorch. CUDA extension will not be built.")
+            print("DEBUG: CUDA not available in PyTorch. Returning empty list.")
+            print("=" * 80)
             return []
 
         # Print device and version info
@@ -146,27 +153,42 @@ class CUDAExtensionBuilder:
 
         # Get architecture flags
         nvcc_flags = self.flags_manager.get_architecture_flags(self.device_info.compute_capability)
+        print(f"DEBUG: nvcc_flags = {nvcc_flags}")
 
         # Define source files - use relative paths from setup.py directory
         source_files = ["bindings.cpp", "histogram_matching.cu", "reinhard.cu", "macenko.cu"]
         sources = [str(Path("src") / "stainx_cuda" / "csrc" / f) for f in source_files]
+        print(f"DEBUG: source files = {sources}")
+        
+        # Check if source files exist
+        for src in sources:
+            exists = os.path.exists(src)
+            print(f"DEBUG: {src} exists = {exists}")
 
         # Include directory - use relative path
         include_dir = str(Path("src") / "stainx_cuda" / "csrc")
+        print(f"DEBUG: include_dir = {include_dir}")
 
         # Create extension - PyTorch's CUDAExtension should handle CUDA detection
         # Use "stainx_cuda.stainx_cuda" as the name
         # This creates a module that can be imported as "from stainx_cuda import stainx_cuda"
+        print("DEBUG: Attempting to create CUDAExtension...")
         try:
             extension = CUDAExtension(
                 name="stainx_cuda.stainx_cuda", sources=sources, include_dirs=[include_dir], define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))], extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags}, extra_link_args=["-lcudart", "-lcublas", "-lcusolver"]
             )
+            print("DEBUG: CUDAExtension created successfully!")
+            print(f"DEBUG: Returning extension: {extension}")
+            print("=" * 80)
             return [extension]
         except (OSError, RuntimeError) as e:
+            print(f"DEBUG: Error creating CUDAExtension: {type(e).__name__}: {e}")
             if "CUDA_HOME" in str(e):
-                print(f"CUDA toolkit not found: {e}")
-                print("CUDA extension will not be built. Install CUDA Toolkit to build the extension.")
+                print("DEBUG: CUDA_HOME error detected. Returning empty list.")
+                print("=" * 80)
                 return []
+            print("DEBUG: Re-raising exception...")
+            print("=" * 80)
             raise
 
     def get_build_ext_class(self):
@@ -210,11 +232,24 @@ else:
     os.environ["LD_LIBRARY_PATH"] = f"{torch_lib_path}:{os.environ['LD_LIBRARY_PATH']}"
 
 # Main setup execution
+print("=" * 80)
+print("DEBUG: setup.py execution started")
+print(f"DEBUG: __file__ = {__file__}")
+print(f"DEBUG: Current working directory = {os.getcwd()}")
+
 project_root = Path(__file__).parent
+print(f"DEBUG: project_root = {project_root}")
+
 builder = CUDAExtensionBuilder(project_root)
+print("DEBUG: CUDAExtensionBuilder created")
 
 extensions = builder.build()
+print(f"DEBUG: builder.build() returned: {extensions}")
+print(f"DEBUG: len(extensions) = {len(extensions) if extensions else 0}")
+
 build_ext = builder.get_build_ext_class()
+print(f"DEBUG: build_ext class = {build_ext}")
+print("=" * 80)
 
 # Package discovery - use find_packages to automatically discover all packages and subpackages
 packages = find_packages(where="src")
@@ -241,7 +276,25 @@ setup_kwargs = {
 
 # Always include extension
 # This ensures it's built during wheel creation and pip install from source
-setup_kwargs["ext_modules"] = extensions
-setup_kwargs["cmdclass"] = {"build_ext": build_ext}
+print("=" * 80)
+print("DEBUG: Setting up ext_modules and cmdclass")
+print(f"DEBUG: extensions = {extensions}")
+print(f"DEBUG: extensions type = {type(extensions)}")
+print(f"DEBUG: extensions is not None = {extensions is not None}")
+print(f"DEBUG: extensions is truthy = {bool(extensions)}")
 
+if extensions:
+    setup_kwargs["ext_modules"] = extensions
+    setup_kwargs["cmdclass"] = {"build_ext": build_ext}
+    print(f"DEBUG: Added ext_modules with {len(extensions)} extension(s)")
+    print(f"DEBUG: Added cmdclass with build_ext")
+else:
+    print("DEBUG: No extensions to add (extensions is empty or None)")
+    print("DEBUG: setup_kwargs will not include ext_modules")
+
+print("DEBUG: Calling setup()...")
+print("=" * 80)
 setup(**setup_kwargs)
+print("=" * 80)
+print("DEBUG: setup() completed")
+print("=" * 80)

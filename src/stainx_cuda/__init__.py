@@ -42,21 +42,55 @@ elif torch_lib_path not in os.environ["LD_LIBRARY_PATH"]:
     os.environ["LD_LIBRARY_PATH"] = f"{torch_lib_path}:{os.environ['LD_LIBRARY_PATH']}"
 
 # Import the compiled CUDA extension if available
-try:
-    from .stainx_cuda import histogram_matching, macenko, reinhard
+# Track whether functions are actually available (not just if package imports)
+FUNCTIONS_AVAILABLE = False
+histogram_matching = None
+macenko = None
+reinhard = None
 
-    # Expose functions at package level for easy import
-    __all__ = ["histogram_matching", "macenko", "reinhard"]
-except ImportError:
+print("=" * 80)
+print("DEBUG: stainx_cuda/__init__.py: Starting CUDA extension import")
+print(f"DEBUG: Package location: {Path(__file__).parent}")
+print(f"DEBUG: Looking for stainx_cuda module in: {Path(__file__).parent}")
+
+# Check if compiled extension file exists
+extension_files = list(Path(__file__).parent.glob("stainx_cuda*.so"))
+print(f"DEBUG: Found extension files: {[str(f) for f in extension_files]}")
+
+try:
+    print("DEBUG: Attempting to import from .stainx_cuda...")
+    from .stainx_cuda import histogram_matching, macenko, reinhard
+    print("DEBUG: Successfully imported from .stainx_cuda")
+
+    # Verify functions are actually available
+    print(f"DEBUG: histogram_matching callable: {callable(histogram_matching)}")
+    print(f"DEBUG: macenko callable: {callable(macenko)}")
+    print(f"DEBUG: reinhard callable: {callable(reinhard)}")
+    
+    if all(callable(f) for f in [histogram_matching, macenko, reinhard]):
+        FUNCTIONS_AVAILABLE = True
+        print("DEBUG: All CUDA functions are available!")
+        # Expose functions at package level for easy import
+        __all__ = ["histogram_matching", "macenko", "reinhard", "FUNCTIONS_AVAILABLE"]
+    else:
+        print("DEBUG: Some CUDA functions are not callable")
+        __all__ = ["FUNCTIONS_AVAILABLE"]
+except ImportError as e:
     # CUDA extension not available - this is expected if CUDA extension wasn't built
-    __all__ = []
+    print(f"DEBUG: ImportError when importing CUDA extension: {e}")
+    print("DEBUG: CUDA extension was not built or is not available")
+    __all__ = ["FUNCTIONS_AVAILABLE"]
 except Exception as e:
     # Other errors - show error if in debug mode
+    print(f"DEBUG: Exception when importing CUDA extension: {type(e).__name__}: {e}")
     if os.environ.get("STAINX_DEBUG_CUDA"):
         import traceback
-
         traceback.print_exc()
     # Re-raise if it's a library loading issue (not just missing extension)
     if "cannot open shared object file" in str(e) or "libc10" in str(e) or "libtorch" in str(e):
         raise RuntimeError(f"Failed to load CUDA extension due to missing libraries. Please ensure LD_LIBRARY_PATH includes PyTorch's lib directory: {torch_lib_path if 'torch_lib_path' in locals() else 'unknown'}") from e
-    __all__ = []
+    __all__ = ["FUNCTIONS_AVAILABLE"]
+
+print(f"DEBUG: FUNCTIONS_AVAILABLE = {FUNCTIONS_AVAILABLE}")
+print(f"DEBUG: __all__ = {__all__}")
+print("=" * 80)
