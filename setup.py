@@ -132,27 +132,12 @@ class CUDAExtensionBuilder:
         self.version_checker = PyTorchVersionChecker()
         self.flags_manager = NVCCFlagsManager()
 
-    def _check_cuda_toolkit_available(self):
-        """Check if CUDA toolkit is available (CUDA_HOME set or can be detected)."""
-        # Check if CUDA_HOME or CUDA_PATH is set
-        if os.environ.get("CUDA_HOME") or os.environ.get("CUDA_PATH"):
-            return True
-
-        # Check common CUDA installation paths
-        common_cuda_paths = ["/usr/local/cuda", "/opt/cuda", "/usr/local/cuda-12", "/usr/local/cuda-11"]
-        for cuda_path in common_cuda_paths:
-            if os.path.exists(cuda_path) and os.path.exists(os.path.join(cuda_path, "bin", "nvcc")):
-                os.environ["CUDA_HOME"] = cuda_path
-                return True
-
-        return False
-
     def build(self):
         """Build the CUDA extension configuration."""
-        # Check if CUDA toolkit is available before creating CUDAExtension
-        if not self._check_cuda_toolkit_available():
-            print("CUDA toolkit not available (CUDA_HOME not set). CUDA extension will not be built.")
-            print("To build CUDA extension, install CUDA Toolkit and set CUDA_HOME environment variable.")
+        # Always try to build CUDA extension
+        # Check if PyTorch was built with CUDA support
+        if not torch.cuda.is_available():
+            print("CUDA not available in PyTorch. CUDA extension will not be built.")
             return []
 
         # Print device and version info
@@ -169,14 +154,20 @@ class CUDAExtensionBuilder:
         # Include directory - use relative path
         include_dir = str(Path("src") / "stainx_cuda" / "csrc")
 
-        # Create extension
+        # Create extension - PyTorch's CUDAExtension should handle CUDA detection
         # Use "stainx_cuda.stainx_cuda" as the name
         # This creates a module that can be imported as "from stainx_cuda import stainx_cuda"
-        extension = CUDAExtension(
-            name="stainx_cuda.stainx_cuda", sources=sources, include_dirs=[include_dir], define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))], extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags}, extra_link_args=["-lcudart", "-lcublas", "-lcusolver"]
-        )
-
-        return [extension]
+        try:
+            extension = CUDAExtension(
+                name="stainx_cuda.stainx_cuda", sources=sources, include_dirs=[include_dir], define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))], extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags}, extra_link_args=["-lcudart", "-lcublas", "-lcusolver"]
+            )
+            return [extension]
+        except (OSError, RuntimeError) as e:
+            if "CUDA_HOME" in str(e):
+                print(f"CUDA toolkit not found: {e}")
+                print("CUDA extension will not be built. Install CUDA Toolkit to build the extension.")
+                return []
+            raise
 
     def get_build_ext_class(self):
         """Get the build extension class with ninja support."""
@@ -248,9 +239,9 @@ setup_kwargs = {
     "classifiers": ["Environment :: GPU :: NVIDIA CUDA", "Intended Audience :: Developers", "Intended Audience :: Healthcare Industry", "Intended Audience :: Science/Research", "Programming Language :: Python :: 3", "Topic :: Scientific/Engineering", "Topic :: Software Development"],
 }
 
-# Include extension if available (built if CUDA toolkit is available)
-if extensions:
-    setup_kwargs["ext_modules"] = extensions
-    setup_kwargs["cmdclass"] = {"build_ext": build_ext}
+# Always include extension
+# This ensures it's built during wheel creation and pip install from source
+setup_kwargs["ext_modules"] = extensions
+setup_kwargs["cmdclass"] = {"build_ext": build_ext}
 
 setup(**setup_kwargs)
