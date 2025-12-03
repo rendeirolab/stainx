@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stainx"
-version = "0.0.4"
+version = "0.0.5"
 description = "GPU-accelerated stain normalization"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -26,7 +26,8 @@ classifiers = [
     "Topic :: Software Development",
 ]
 
-
+[tool.setuptools.package-data]
+stainx_cuda = ["csrc/*.cpp", "csrc/*.cu", "csrc/*.h", "csrc/*.hpp", "csrc/*.cuh"]
 
 [dependency-groups]
 dev = [

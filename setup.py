@@ -9,7 +9,6 @@
 import contextlib
 import os
 import re
-import shutil
 from pathlib import Path
 from typing import ClassVar
 
@@ -133,21 +132,11 @@ class CUDAExtensionBuilder:
         self.version_checker = PyTorchVersionChecker()
         self.flags_manager = NVCCFlagsManager()
 
-    def _check_nvcc_available(self):
-        """Check if nvcc (CUDA compiler) is available."""
-        return shutil.which("nvcc") is not None
-
     def build(self):
         """Build the CUDA extension configuration."""
-        # Check if nvcc is available (CUDA toolkit installed)
-        if not self._check_nvcc_available():
-            print("nvcc not found. CUDA extension will not be built.")
-            print("To build CUDA extension, install CUDA Toolkit and ensure nvcc is in PATH.")
-            return []
-
-        # Always try to build CUDA extension, even if CUDA device is not available
-        # (CUDA toolkit might still be available for compilation)
-
+        # Always try to build CUDA extension
+        # This ensures it's built during pip install from source distribution
+        
         # Print device and version info
         self.device_info.print_info()
         self.version_checker.check()
@@ -241,9 +230,9 @@ setup_kwargs = {
     "classifiers": ["Environment :: GPU :: NVIDIA CUDA", "Intended Audience :: Developers", "Intended Audience :: Healthcare Industry", "Intended Audience :: Science/Research", "Programming Language :: Python :: 3", "Topic :: Scientific/Engineering", "Topic :: Software Development"],
 }
 
-# Only add extension-related arguments if CUDA extension is being built
-if extensions:
-    setup_kwargs["ext_modules"] = extensions
-    setup_kwargs["cmdclass"] = {"build_ext": build_ext}
+# Always include extension
+# This ensures it's built during pip install from source distribution
+setup_kwargs["ext_modules"] = extensions
+setup_kwargs["cmdclass"] = {"build_ext": build_ext}
 
 setup(**setup_kwargs)
