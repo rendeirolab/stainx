@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/rendeirolab/stainx/refs/heads/main/assets/temporary-logo.svg"/>
 
 ![CI](https://github.com/rendeirolab/stainx/actions/workflows/ci.yml/badge.svg)
-![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 </div>
 
 
@@ -21,7 +21,7 @@ GPU-accelerated stain normalization for histopathology images.
 
 ### Requirements
 
-- Python >=3.10
+- Python >=3.11
 - PyTorch >=2.0.0
 - CUDA (optional, for GPU acceleration)
 
@@ -95,7 +95,7 @@ normalizer = Reinhard(device="cuda", backend="pytorch")  # Force PyTorch backend
 
 ## Requirements
 
-- Python >=3.12
+- Python >=3.11
 - PyTorch >=2.0.0
 - CUDA Toolkit (optional, for CUDA backend)
 

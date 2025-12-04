@@ -212,13 +212,25 @@ setup_kwargs = {
     "package_dir": {"": "src"},
     "zip_safe": False,
     "version": get_version_from_pyproject(),
+    "python_requires": ">=3.11",
     "description": "GPU-accelerated stain normalization",
     "author": "Samir Moustafa",
     "author_email": "smoustafa@cemm.oeaw.ac.at",
     "url": "https://github.com/rendeirolab/stainx",
     "long_description": long_description,
     "long_description_content_type": "text/markdown",
-    "classifiers": ["Environment :: GPU :: NVIDIA CUDA", "Intended Audience :: Developers", "Intended Audience :: Healthcare Industry", "Intended Audience :: Science/Research", "Programming Language :: Python :: 3", "Topic :: Scientific/Engineering", "Topic :: Software Development"],
+    "classifiers": [
+        "Environment :: GPU :: NVIDIA CUDA",
+        "Intended Audience :: Developers",
+        "Intended Audience :: Healthcare Industry",
+        "Intended Audience :: Science/Research",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Topic :: Scientific/Engineering",
+        "Topic :: Software Development",
+    ],
 }
 
 # Always include extension (like torch-floating-point)
