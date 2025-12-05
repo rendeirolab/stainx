@@ -1,7 +1,7 @@
 <div align="center">
 
 <h1>StainX</h1>
-<img src="https://raw.githubusercontent.com/rendeirolab/stainx/refs/heads/main/assets/temporary-logo.svg"/>
+<img src="https://raw.githubusercontent.com/rendeirolab/stainx/refs/heads/main/assets/staix-logo-256.png"/>
 
 ![CI](https://github.com/rendeirolab/stainx/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
