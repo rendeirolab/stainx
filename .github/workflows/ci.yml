@@ -183,6 +183,9 @@ jobs:
 
       - name: Build CUDA extension
         run: |
+          export PATH=/usr/local/cuda-12.8/bin:$PATH
+          export CUDA_HOME=/usr/local/cuda-12.8
+          nvcc --version
           uv run python setup.py build_ext --inplace
 
       - name: Verify CUDA extension
