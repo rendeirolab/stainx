@@ -162,20 +162,64 @@ jobs:
           nvcc --version 2>/dev/null || echo "nvcc not found in PATH (PyTorch will provide CUDA)"
 
       - name: Verify PyTorch CUDA support
+        id: pytorch_cuda
         run: |
           uv run python -c "
           import torch
           print(f'PyTorch version: {torch.__version__}')
           print(f'CUDA available: {torch.cuda.is_available()}')
           if torch.cuda.is_available():
-              print(f'CUDA version: {torch.version.cuda}')
+              cuda_version = torch.version.cuda
+              print(f'CUDA version: {cuda_version}')
               print(f'GPU count: {torch.cuda.device_count()}')
               for i in range(torch.cuda.device_count()):
                   print(f'GPU {i}: {torch.cuda.get_device_name(i)}')
+              # Extract major.minor version (e.g., '12.8' -> '12.8')
+              cuda_major_minor = '.'.join(cuda_version.split('.')[:2])
+              print(f'::set-output name=version::{cuda_major_minor}')
           else:
               print('::error::PyTorch CUDA is not available')
               exit(1)
           "
+
+      - name: Install CUDA toolkit
+        run: |
+          # Get PyTorch CUDA version
+          CUDA_VERSION="${{ steps.pytorch_cuda.outputs.version }}"
+          CUDA_MAJOR=$(echo $CUDA_VERSION | cut -d. -f1)
+          CUDA_MINOR=$(echo $CUDA_VERSION | cut -d. -f2)
+          
+          echo "Installing CUDA toolkit ${CUDA_MAJOR}.${CUDA_MINOR} to match PyTorch CUDA ${CUDA_VERSION}"
+          
+          # Install CUDA toolkit via apt (for Ubuntu/Debian-based systems)
+          if command -v apt-get &> /dev/null; then
+            # Add NVIDIA CUDA repository
+            wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+            sudo dpkg -i cuda-keyring_1.1-1_all.deb
+            sudo apt-get update
+            
+            # Install CUDA toolkit (matching major.minor version)
+            sudo apt-get install -y cuda-toolkit-${CUDA_MAJOR}-${CUDA_MINOR} || {
+              echo "Package cuda-toolkit-${CUDA_MAJOR}-${CUDA_MINOR} not found, trying cuda-toolkit-${CUDA_MAJOR}"
+              sudo apt-get install -y cuda-toolkit-${CUDA_MAJOR}
+            }
+            
+            # Find installed CUDA path and set environment variables
+            CUDA_PATH=$(find /usr/local -maxdepth 1 -type d -name "cuda-${CUDA_MAJOR}*" | sort -V | tail -1)
+            if [ -z "$CUDA_PATH" ]; then
+              CUDA_PATH="/usr/local/cuda"
+            fi
+            
+            echo "Found CUDA at: $CUDA_PATH"
+            echo "PATH=$CUDA_PATH/bin:$PATH" >> $GITHUB_ENV
+            echo "LD_LIBRARY_PATH=$CUDA_PATH/lib64:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+            echo "CUDA_HOME=$CUDA_PATH" >> $GITHUB_ENV
+            
+            # Verify nvcc is available
+            $CUDA_PATH/bin/nvcc --version || echo "Warning: nvcc not found at $CUDA_PATH/bin/nvcc"
+          else
+            echo "Warning: apt-get not available, cannot install CUDA toolkit automatically"
+          fi
 
       - name: Build CUDA extension
         run: |
