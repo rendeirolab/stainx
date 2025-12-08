@@ -125,11 +125,101 @@ jobs:
           file: ./coverage.xml
           fail_ci_if_error: false
 
+  test-gpu:
+    name: Test GPU (CUDA)
+    runs-on: [self-hosted, gpu]
+    needs: [docs-build, lint]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        env:
+          UV_CONCURRENT_DOWNLOADS: 50
+        run: |
+          uv sync --dev
+
+      - name: Check GPU availability
+        id: check_gpu
+        run: |
+          if command -v nvidia-smi &> /dev/null; then
+            echo "GPU available: true" >> $GITHUB_OUTPUT
+            echo "=== GPU Information ==="
+            nvidia-smi
+            echo ""
+            echo "=== CUDA Version ==="
+            nvcc --version 2>/dev/null || echo "nvcc not found in PATH (PyTorch will provide CUDA)"
+          else
+            echo "GPU available: false" >> $GITHUB_OUTPUT
+            echo "::error::nvidia-smi not found. This job requires a GPU-enabled runner."
+            echo "::error::Please configure a self-hosted runner with GPU or use GitHub-hosted GPU runners."
+            exit 1
+          fi
+
+      - name: Verify PyTorch CUDA support
+        run: |
+          uv run python -c "
+          import torch
+          print(f'PyTorch version: {torch.__version__}')
+          print(f'CUDA available: {torch.cuda.is_available()}')
+          if torch.cuda.is_available():
+              print(f'CUDA version: {torch.version.cuda}')
+              print(f'GPU count: {torch.cuda.device_count()}')
+              for i in range(torch.cuda.device_count()):
+                  print(f'GPU {i}: {torch.cuda.get_device_name(i)}')
+          else:
+              print('::error::PyTorch CUDA is not available')
+              exit(1)
+          "
+
+      - name: Build CUDA extension
+        run: |
+          uv run python setup.py build_ext --inplace
+
+      - name: Verify CUDA extension
+        run: |
+          uv run python -c "
+          try:
+              import stainx_cuda
+              print(f'✅ CUDA extension imported successfully')
+              print(f'Functions available: {getattr(stainx_cuda, \"FUNCTIONS_AVAILABLE\", False)}')
+          except ImportError as e:
+              print(f'❌ Failed to import CUDA extension: {e}')
+              exit(1)
+          "
+
+      - name: Run CUDA tests
+        run: |
+          # Set up LD_LIBRARY_PATH for PyTorch libraries
+          TORCH_LIB_PATH=$(uv run python -c 'import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), "lib"))' 2>/dev/null || echo "")
+          if [ -n "$TORCH_LIB_PATH" ] && [ -d "$TORCH_LIB_PATH" ]; then
+            export LD_LIBRARY_PATH="$TORCH_LIB_PATH:${LD_LIBRARY_PATH:-}"
+          fi
+          
+          # Run only CUDA-marked tests
+          uv run pytest tests/ -v -m "cuda" --cov=src/stainx --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
   check-version:
     name: Check if Version Changed
     runs-on: ubuntu-latest
-    needs: test
-    if: always()
+    needs: [test, test-gpu]
+    # Proceed if regular tests pass (GPU test is optional with continue-on-error)
+    if: always() && needs.test.result == 'success'
     outputs:
       version-changed: ${{ steps.check.outputs.changed }}
     steps:
