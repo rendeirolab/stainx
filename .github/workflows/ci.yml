@@ -83,7 +83,7 @@ jobs:
   test-linux:
     name: Test Linux Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
-    needs: [build-docs, lint-code]
+    needs: [lint-code]
     strategy:
       fail-fast: false
       matrix:
@@ -132,7 +132,7 @@ jobs:
   test-linux-gpu:
     name: Test Linux GPU Python 3.12
     runs-on: linux-gpu-runner
-    needs: [build-docs, lint-code]
+    needs: [lint-code]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -259,7 +259,7 @@ jobs:
   test-windows:
     name: Test Windows Python ${{ matrix.python-version }}
     runs-on: windows-latest
-    needs: [build-docs, lint-code]
+    needs: [lint-code]
     strategy:
       fail-fast: false
       matrix:
