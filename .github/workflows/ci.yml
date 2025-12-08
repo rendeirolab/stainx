@@ -152,14 +152,14 @@ jobs:
         id: check_gpu
         run: |
           if command -v nvidia-smi &> /dev/null; then
-            echo "GPU available: true" >> $GITHUB_OUTPUT
+            echo "GPU_AVAILABLE=true" >> $GITHUB_OUTPUT
             echo "=== GPU Information ==="
             nvidia-smi
             echo ""
             echo "=== CUDA Version ==="
             nvcc --version 2>/dev/null || echo "nvcc not found in PATH (PyTorch will provide CUDA)"
           else
-            echo "GPU available: false" >> $GITHUB_OUTPUT
+            echo "GPU_AVAILABLE=false" >> $GITHUB_OUTPUT
             echo "::error::nvidia-smi not found. This job requires a GPU-enabled runner."
             echo "::error::Please configure a self-hosted runner with GPU or use GitHub-hosted GPU runners."
             exit 1
