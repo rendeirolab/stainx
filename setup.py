@@ -190,7 +190,7 @@ else:
 # Extract and set CUDA_HOME from PyTorch if CUDA is available but CUDA_HOME is not set
 if torch.cuda.is_available() and "CUDA_HOME" not in os.environ:
     torch_dir = Path(torch.__file__).parent
-    
+
     # PyTorch with CUDA typically bundles CUDA toolkit in torch/lib/cuda/
     # Check for CUDA version-specific directories first
     cuda_home_found = False
@@ -205,7 +205,7 @@ if torch.cuda.is_available() and "CUDA_HOME" not in os.environ:
                 cuda_home_found = True
     except Exception:
         pass
-    
+
     # If version-specific path not found, try generic torch/lib/cuda
     if not cuda_home_found:
         cuda_lib_path = torch_dir / "lib" / "cuda"
@@ -213,7 +213,7 @@ if torch.cuda.is_available() and "CUDA_HOME" not in os.environ:
             os.environ["CUDA_HOME"] = str(cuda_lib_path)
             print(f"Setting CUDA_HOME={os.environ['CUDA_HOME']} (extracted from PyTorch)")
             cuda_home_found = True
-    
+
     # If still not found, try torch/lib as fallback (PyTorch's CUDA libraries are here)
     if not cuda_home_found:
         torch_lib = torch_dir / "lib"
