@@ -1,5 +1,5 @@
 site_name: StainX Documentation
-site_description: GPU-accelerated stain normalization for histopathology images
+site_description: Enhanced stain normalization for histopathology images with batch processing support. Optimized for CPU, GPU (CUDA), and MPS (Apple Silicon) devices.
 site_url: https://stainx.readthedocs.io/
 
 repo_name: rendeirolab/stainx
@@ -28,6 +28,7 @@ theme:
     - search.suggest
     - search.highlight
     - content.code.annotate
+    - content.code.copy
 
 markdown_extensions:
   - pymdownx.highlight:
@@ -48,6 +49,8 @@ nav:
   - Home: index.md
   - Installation: installation.md
   - Quick Start: quickstart.md
+  - Examples: examples.md
+  - Benchmarks: benchmarks.md
   - API Reference:
     - API Overview: api/index.md
     - Normalizers:
@@ -58,7 +61,6 @@ nav:
       - StainNormalizerBase: api/base.md
     - Backends:
       - Backend Overview: api/backends.md
-  - Examples: examples.md
   - Changelog: changelog.md
 
 plugins:

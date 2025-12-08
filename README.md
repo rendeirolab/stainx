@@ -8,14 +8,14 @@
 </div>
 
 
-GPU-accelerated stain normalization for histopathology images.
+Enhanced stain normalization for histopathology images with batch processing support. Optimized for CPU, GPU (CUDA), and MPS (Apple Silicon) devices.
 
 ## Features
 
 - **Multiple algorithms**: Histogram Matching, Reinhard, and Macenko normalization
-- **Automatic backend selection**: PyTorch (CPU/GPU) or optimized CUDA kernels
-- **Batch processing**: Efficient processing of multiple images
-- **Flexible device support**: CPU, CUDA, or custom device selection
+- **Automatic backend selection**: PyTorch (CPU/GPU/MPS) or optimized CUDA kernels
+- **Batch processing**: Enhanced normalization through efficient batch processing of multiple images
+- **Flexible device support**: CPU, CUDA, MPS (Apple Silicon)
 
 ## Installation
 
