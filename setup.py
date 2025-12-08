@@ -187,6 +187,44 @@ if "LD_LIBRARY_PATH" not in os.environ:
 else:
     os.environ["LD_LIBRARY_PATH"] = f"{torch_lib_path}:{os.environ['LD_LIBRARY_PATH']}"
 
+# Extract and set CUDA_HOME from PyTorch if CUDA is available but CUDA_HOME is not set
+if torch.cuda.is_available() and "CUDA_HOME" not in os.environ:
+    torch_dir = Path(torch.__file__).parent
+    
+    # PyTorch with CUDA typically bundles CUDA toolkit in torch/lib/cuda/
+    # Check for CUDA version-specific directories first
+    cuda_home_found = False
+    try:
+        cuda_version = torch.version.cuda
+        if cuda_version:
+            # Try torch/lib/cuda/cuda-{version} (e.g., cuda-12.8)
+            cuda_version_path = torch_dir / "lib" / "cuda" / f"cuda-{cuda_version}"
+            if cuda_version_path.exists():
+                os.environ["CUDA_HOME"] = str(cuda_version_path)
+                print(f"Setting CUDA_HOME={os.environ['CUDA_HOME']} (extracted from PyTorch CUDA {cuda_version})")
+                cuda_home_found = True
+    except Exception:
+        pass
+    
+    # If version-specific path not found, try generic torch/lib/cuda
+    if not cuda_home_found:
+        cuda_lib_path = torch_dir / "lib" / "cuda"
+        if cuda_lib_path.exists():
+            os.environ["CUDA_HOME"] = str(cuda_lib_path)
+            print(f"Setting CUDA_HOME={os.environ['CUDA_HOME']} (extracted from PyTorch)")
+            cuda_home_found = True
+    
+    # If still not found, try torch/lib as fallback (PyTorch's CUDA libraries are here)
+    if not cuda_home_found:
+        torch_lib = torch_dir / "lib"
+        if torch_lib.exists():
+            # Check if CUDA libraries exist
+            cuda_libs = list(torch_lib.glob("*cudart*")) + list(torch_lib.glob("*cublas*"))
+            if cuda_libs:
+                # Use torch directory as CUDA_HOME (PyTorch bundles CUDA components)
+                os.environ["CUDA_HOME"] = str(torch_dir)
+                print(f"Setting CUDA_HOME={os.environ['CUDA_HOME']} (extracted from PyTorch installation)")
+
 if torch.cuda.is_available():
     print("CUDA detected, building with CUDA support.")
     project_root = Path(__file__).parent
