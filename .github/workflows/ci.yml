@@ -139,7 +139,7 @@ jobs:
           version: "latest"
           enable-cache: true
 
-      - name: Set up Python 3.12
+      - name: Set up Python
         run: uv python install 3.12
 
       - name: Install dependencies
@@ -193,10 +193,10 @@ jobs:
           uv run python -c "
           try:
               import stainx_cuda
-              print(f'✅ CUDA extension imported successfully')
+              print(f'CUDA extension imported successfully')
               print(f'Functions available: {getattr(stainx_cuda, \"FUNCTIONS_AVAILABLE\", False)}')
           except ImportError as e:
-              print(f'❌ Failed to import CUDA extension: {e}')
+              print(f'Failed to import CUDA extension: {e}')
               exit(1)
           "
 
@@ -243,14 +243,14 @@ jobs:
           # Always allow release events and workflow_dispatch
           if [ "${{ github.event_name }}" == "release" ] || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
-            echo "✅ Release or manual dispatch event - publish will be triggered"
+            echo "Release or manual dispatch event - publish will be triggered"
             exit 0
           fi
           
           # Only check on push events to main branch
           if [ "${{ github.event_name }}" != "push" ] || [ "${{ github.ref }}" != "refs/heads/main" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ Not a push to main - skipping version check"
+            echo "Not a push to main - skipping version check"
             exit 0
           fi
           
@@ -259,11 +259,11 @@ jobs:
           
           if [ -z "$CURRENT_VERSION" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
-            echo "❌ Could not extract version from pyproject.toml"
+            echo "Could not extract version from pyproject.toml"
             exit 0
           fi
           
-          echo "📦 Current version in pyproject.toml: $CURRENT_VERSION"
+          echo "Current version in pyproject.toml: $CURRENT_VERSION"
           
           # Query PyPI for published version
           PACKAGE_NAME="stainx"
@@ -272,7 +272,7 @@ jobs:
           if [ -z "$PYPI_RESPONSE" ] || echo "$PYPI_RESPONSE" | grep -q '"message"'; then
             # Package doesn't exist on PyPI yet, so we should publish
             echo "changed=true" >> $GITHUB_OUTPUT
-            echo "✅ Package not found on PyPI - first release will be published"
+            echo "Package not found on PyPI - first release will be published"
             exit 0
           fi
           
@@ -280,11 +280,11 @@ jobs:
           
           if [ -z "$PYPI_VERSION" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
-            echo "✅ Could not determine PyPI version - will attempt to publish"
+            echo "Could not determine PyPI version - will attempt to publish"
             exit 0
           fi
           
-          echo "📦 Published version on PyPI: $PYPI_VERSION"
+          echo "Published version on PyPI: $PYPI_VERSION"
           
           # Compare versions using Python's packaging library (available in Python 3.12+)
           VERSION_COMPARE=$(python3 << EOF
@@ -306,16 +306,16 @@ jobs:
           
           if [ "$VERSION_COMPARE" == "greater" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
-            echo "✅ Version $CURRENT_VERSION is greater than PyPI version $PYPI_VERSION - publish will be triggered"
+            echo "Version $CURRENT_VERSION is greater than PyPI version $PYPI_VERSION - publish will be triggered"
           elif [ "$VERSION_COMPARE" == "equal" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ Version $CURRENT_VERSION matches PyPI version $PYPI_VERSION - no publish needed"
+            echo "Version $CURRENT_VERSION matches PyPI version $PYPI_VERSION - no publish needed"
           elif [ "$VERSION_COMPARE" == "less" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Version $CURRENT_VERSION is less than PyPI version $PYPI_VERSION - skipping publish (downgrade not allowed)"
+            echo "Version $CURRENT_VERSION is less than PyPI version $PYPI_VERSION - skipping publish (downgrade not allowed)"
           else
             echo "changed=false" >> $GITHUB_OUTPUT
-            echo "❌ Error comparing versions: $VERSION_COMPARE"
+            echo "Error comparing versions: $VERSION_COMPARE"
           fi
 
   publish:
