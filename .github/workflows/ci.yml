@@ -130,7 +130,7 @@ jobs:
           fail_ci_if_error: false
 
   test-gpu:
-    name: Test GPU (CUDA)
+    name: Test GPU (CUDA) Python 3.12 Only
     runs-on: linux-gpu-runner
     needs: [docs-build, lint]
     steps:
