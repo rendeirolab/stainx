@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stainx"
-version = "0.0.16"
+version = "0.0.17"
 description = "Enhanced stain normalization for histopathology images with batch processing support. Optimized for CPU, GPU (CUDA), and MPS (Apple Silicon) devices."
 readme = "README.md"
 requires-python = ">=3.11"
