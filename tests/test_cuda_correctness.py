@@ -64,7 +64,9 @@ class TestCUDABackendComparison:
 
             assert rel_abs_error < 0.01, f"CUDA vs PyTorch Reinhard relative absolute error too large: {rel_abs_error:.6f}, expected <0.01"
         except (ImportError, NotImplementedError) as e:
-            pytest.skip(f"CUDA backend not available: {e}")
+            # CUDA extension not available, but CUDA is detected (via PyTorch)
+            # This is a failure - if CUDA is available, the CUDA extension should be built
+            pytest.fail(f"CUDA is detected but CUDA extension is not available: {e}")
 
     def test_macenko_cuda_vs_pytorch(self, reference_image, source_image_torch, cuda_device):
         """Test CUDA backend vs PyTorch backend for Macenko normalization."""
@@ -85,7 +87,9 @@ class TestCUDABackendComparison:
 
             assert rel_abs_error < 0.01, f"CUDA vs PyTorch Macenko relative absolute error too large: {rel_abs_error:.6f}, expected <0.01"
         except (ImportError, NotImplementedError) as e:
-            pytest.skip(f"CUDA backend not available: {e}")
+            # CUDA extension not available, but CUDA is detected (via PyTorch)
+            # This is a failure - if CUDA is available, the CUDA extension should be built
+            pytest.fail(f"CUDA is detected but CUDA extension is not available: {e}")
 
     @pytest.mark.parametrize("channel_axis", [1, -1, 3, -3])
     def test_histogram_matching_cuda_vs_pytorch(self, reference_image, source_image_torch, cuda_device, channel_axis):
@@ -114,7 +118,9 @@ class TestCUDABackendComparison:
 
             assert rel_abs_error < 0.01, f"CUDA vs PyTorch histogram matching relative absolute error too large: {rel_abs_error:.6f}, expected <0.01 (channel_axis={channel_axis})"
         except (ImportError, NotImplementedError) as e:
-            pytest.skip(f"CUDA backend not available: {e}")
+            # CUDA extension not available, but CUDA is detected (via PyTorch)
+            # This is a failure - if CUDA is available, the CUDA extension should be built
+            pytest.fail(f"CUDA is detected but CUDA extension is not available: {e}")
 
 
 if __name__ == "__main__":
