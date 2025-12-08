@@ -1,13 +1,13 @@
-<div align="center">
-
 # StainX
 
-<img src="https://raw.githubusercontent.com/rendeirolab/stainx/refs/heads/main/assets/staix-logo-256.png" alt="StainX Logo" width="256"/>
-
-![CI](https://github.com/rendeirolab/stainx/actions/workflows/ci.yml/badge.svg)
-![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-
-</div>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/rendeirolab/stainx/refs/heads/main/assets/staix-logo-256.png" alt="StainX Logo" width="256"/>
+  <br/>
+  <a href="https://github.com/rendeirolab/stainx/actions/workflows/ci.yml">
+    <img src="https://github.com/rendeirolab/stainx/actions/workflows/ci.yml/badge.svg" alt="CI"/>
+  </a>
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python"/>
+</p>
 
 ## Overview
 
