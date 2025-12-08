@@ -131,7 +131,7 @@ jobs:
 
   test-gpu:
     name: Test GPU (CUDA)
-    runs-on: gpu-linux
+    runs-on: gpu
     needs: [docs-build, lint]
     steps:
       - name: Checkout code
