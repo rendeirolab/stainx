@@ -7,6 +7,10 @@ on:
     types: [published]
   workflow_dispatch:
 
+permissions:
+  id-token: write  # Required for OIDC authentication
+  contents: read
+
 jobs:
   docs-build:
     name: Build Documentation
@@ -125,10 +129,47 @@ jobs:
           file: ./coverage.xml
           fail_ci_if_error: false
 
+  start-gpu-vm:
+    name: Start GPU VM
+    runs-on: ubuntu-latest
+    needs: [docs-build, lint]
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Check VM status
+        id: vm_status
+        run: |
+          VM_STATE=$(az vm get-instance-view \
+            --resource-group stainx-gpu-runner \
+            --name stainx-gpu-runner \
+            --query "instanceView.statuses[?code=='PowerState/running']" \
+            --output tsv)
+          
+          if [ -z "$VM_STATE" ]; then
+            echo "VM is stopped, starting..."
+            az vm start --resource-group stainx-gpu-runner --name stainx-gpu-runner
+            echo "started=true" >> $GITHUB_OUTPUT
+          else
+            echo "VM is already running"
+            echo "started=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Wait for VM to be ready
+        if: steps.vm_status.outputs.started == 'true'
+        run: |
+          echo "Waiting for VM to fully boot (60s)..."
+          sleep 60
+          echo "✅ VM should be ready for runner connection"
+
   test-gpu:
     name: Test GPU (CUDA)
     runs-on: [self-hosted, gpu]
-    needs: [docs-build, lint]
+    needs: [start-gpu-vm]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -217,10 +258,31 @@ jobs:
           file: ./coverage.xml
           fail_ci_if_error: false
 
+  stop-gpu-vm:
+    name: Stop GPU VM
+    runs-on: ubuntu-latest
+    needs: [test-gpu]
+    if: always()  # Run even if test-gpu fails
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Stop VM
+        run: |
+          echo "Stopping GPU VM to save costs..."
+          # Use deallocate to fully stop billing (not just stop)
+          az vm deallocate --resource-group stainx-gpu-runner --name stainx-gpu-runner || \
+          az vm stop --resource-group stainx-gpu-runner --name stainx-gpu-runner || true
+          echo "VM stopped (compute billing stopped)"
+
   check-version:
     name: Check if Version Changed
     runs-on: ubuntu-latest
-    needs: [test, test-gpu]
+    needs: [test, test-gpu, stop-gpu-vm]
     # Proceed if regular tests pass (GPU test is optional with continue-on-error)
     if: always() && needs.test.result == 'success'
     outputs:
