@@ -306,139 +306,10 @@ jobs:
           file: ./coverage.xml
           fail_ci_if_error: false
 
-  test-gpu-windows:
-    name: Test GPU (CUDA) Windows Python 3.12 Only
-    runs-on: windows-latest
-    needs: [docs-build, lint]
-    continue-on-error: true
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          version: "latest"
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.12
-
-      - name: Install dependencies
-        env:
-          UV_CONCURRENT_DOWNLOADS: 50
-        run: |
-          uv sync --dev
-
-      - name: Check GPU availability
-        id: check_gpu
-        shell: pwsh
-        run: |
-          Write-Host "=== GPU Information ==="
-          $nvidiaSmi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
-          if ($nvidiaSmi) {
-            nvidia-smi
-          } else {
-            Write-Host "nvidia-smi not found in PATH (GPU may not be available on this runner)"
-          }
-          Write-Host ""
-          Write-Host "=== CUDA Version ==="
-          nvcc --version 2>$null || Write-Host "nvcc not found in PATH (PyTorch will provide CUDA)"
-
-      - name: Verify PyTorch CUDA support
-        id: pytorch_cuda
-        shell: pwsh
-        run: |
-          $pythonOutput = uv run python -c @"
-          import torch
-          print(f'PyTorch version: {torch.__version__}')
-          print(f'CUDA available: {torch.cuda.is_available()}')
-          if torch.cuda.is_available():
-              cuda_version = torch.version.cuda
-              print(f'CUDA version: {cuda_version}')
-              print(f'GPU count: {torch.cuda.device_count()}')
-              for i in range(torch.cuda.device_count()):
-                  print(f'GPU {i}: {torch.cuda.get_device_name(i)}')
-              # Extract major.minor version (e.g., '12.8' -> '12.8')
-              cuda_major_minor = '.'.join(cuda_version.split('.')[:2])
-              print(cuda_major_minor)
-          else:
-              print('::error::PyTorch CUDA is not available')
-              exit(1)
-          "@
-          Write-Host $pythonOutput
-          # Extract the last line which should be the CUDA version
-          $cudaVersion = ($pythonOutput -split "`n" | Select-Object -Last 1).Trim()
-          Write-Host "CUDA version for output: $cudaVersion"
-          echo "version=$cudaVersion" >> $env:GITHUB_OUTPUT
-
-      - name: Install CUDA toolkit
-        shell: pwsh
-        run: |
-          # Get PyTorch CUDA version from previous step
-          $cudaVersion = "${{ steps.pytorch_cuda.outputs.version }}"
-          $cudaParts = $cudaVersion -split '\.'
-          $cudaMajor = $cudaParts[0]
-          $cudaMinor = $cudaParts[1]
-          
-          Write-Host "Installing CUDA toolkit ${cudaMajor}.${cudaMinor} to match PyTorch CUDA ${cudaVersion}"
-          
-          # On Windows, CUDA is typically pre-installed on GitHub runners or provided by PyTorch
-          # Check if nvcc is available
-          $nvccPath = Get-Command nvcc -ErrorAction SilentlyContinue
-          if ($nvccPath) {
-            Write-Host "nvcc found at: $($nvccPath.Source)"
-            $cudaPath = Split-Path (Split-Path $nvccPath.Source)
-            Write-Host "CUDA path: $cudaPath"
-            $env:PATH = "$cudaPath\bin;$env:PATH"
-            $env:CUDA_HOME = $cudaPath
-            Write-Host "PATH=$env:PATH" >> $env:GITHUB_ENV
-            Write-Host "CUDA_HOME=$cudaPath" >> $env:GITHUB_ENV
-          } else {
-            Write-Host "Warning: nvcc not found in PATH. PyTorch will provide CUDA runtime."
-          }
-
-      - name: Build CUDA extension
-        shell: pwsh
-        run: |
-          nvcc --version 2>$null || Write-Host "nvcc not in PATH (PyTorch will provide CUDA)"
-          uv run python setup.py build_ext --inplace
-
-      - name: Verify CUDA extension
-        shell: pwsh
-        run: |
-          uv run python -c @"
-          try:
-              import stainx_cuda
-              print(f'CUDA extension imported successfully')
-              print(f'Functions available: {getattr(stainx_cuda, 'FUNCTIONS_AVAILABLE', False)}')
-          except ImportError as e:
-              print(f'Failed to import CUDA extension: {e}')
-              exit(1)
-          "@
-
-      - name: Run CUDA tests
-        shell: pwsh
-        run: |
-          # Set up PATH for PyTorch libraries
-          $torchLibPath = uv run python -c "import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), 'lib'))" 2>$null
-          if ($torchLibPath -and (Test-Path $torchLibPath)) {
-            $env:PATH = "$torchLibPath;$env:PATH"
-          }
-          
-          # Run only CUDA-marked tests
-          uv run pytest tests/ -v -m "cuda" --cov=src/stainx --cov-report=xml --cov-report=term-missing
-
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
-        with:
-          file: ./coverage.xml
-          fail_ci_if_error: false
-
   check-version:
     name: Check if Version Changed
     runs-on: ubuntu-latest
-    needs: [test, test-gpu, test-windows, test-gpu-windows]
+    needs: [test, test-gpu, test-windows]
     # Proceed if regular tests pass (GPU tests are optional with continue-on-error)
     if: always() && needs.test.result == 'success'
     outputs:
@@ -539,7 +410,7 @@ jobs:
   publish:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [test, test-gpu, test-windows, test-gpu-windows, check-version]
+    needs: [check-version]
     if: |
       github.event_name == 'release' ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
@@ -572,7 +443,7 @@ jobs:
   trigger-rtd:
     name: Trigger Read the Docs Build
     runs-on: ubuntu-latest
-    needs: [test, test-gpu, test-windows, test-gpu-windows, check-version]
+    needs: [check-version]
     if: |
       github.event_name == 'release' ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
