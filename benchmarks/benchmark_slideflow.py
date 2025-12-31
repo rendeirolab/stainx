@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "."))
 
 # Import SlideFlow normalizers
 import slideflow.norm as sf_norm
-from logger import setup_logger
+from utils import setup_logger
 
 # Global logger instance (will be initialized in main)
 logger = None

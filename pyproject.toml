@@ -49,8 +49,17 @@ dev = [
     "ninja>=1.10.0",
 ]
 benchmark = [
-    "slideflow[cucim]>=3.0.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
-    "slideflow>=3.0.0; sys_platform != 'linux' or platform_machine != 'x86_64'",
+    "prettytable",
+    "slideflow",
+    "cucim",
+    "torchvision",
+    "llvmlite>=0.45.0",
+    "numba>=0.60.0",
+    "umap-learn>=0.5.9",
+    "torchstain @ git+https://github.com/EIDOSLAB/torchstain.git@development",
+    "scikit-image",
+    "matplotlib",
+    "numpy",
 ]
 
 [tool.pytest.ini_options]

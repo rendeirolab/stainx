@@ -297,6 +297,9 @@ dependencies = [
     { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0e/bc/2a53b259ec14101a42690992ea8fc2456edcacc73ede62f803dd3c4b0bdc/configspace-1.2.1.tar.gz", hash = "sha256:2fc1c4477f7839d38b53d8813c2581967df57ccd7d8b4b506e879a8835cb964c", size = 130983, upload-time = "2024-11-21T10:18:39.79Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f1/d0/e899691a9cdec2b866fbf7c39747195b9402e64260632f415c851ae8e503/configspace-1.2.1-py3-none-any.whl", hash = "sha256:78d3cef1bdb447bf25c2433891580bf6c2b468d47b729356a8646d5b7cd9eb5a", size = 117557, upload-time = "2025-12-16T13:10:39.616Z" },
+]
 
 [[package]]
 name = "contourpy"
@@ -544,9 +547,9 @@ name = "cucim"
 version = "23.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "lazy-loader", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "numpy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "click" },
+    { name = "lazy-loader" },
+    { name = "numpy" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/90/9d/b6df8abb3d33ff5f728f00a6074ca68e8790c20d1b9a0828412c9cd17285/cucim-23.10.0-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:2c061ad28c3c1fa67bb62260f0a556f354c8ec2d6e3811eece375ed896d62945", size = 9720570, upload-time = "2023-10-17T20:24:03.265Z" },
@@ -3026,11 +3029,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/71/3c/41b1fee7c4436a8d22cad718c1b3f34efbccd8f2d116284ff1e610c61cc3/slideflow-3.0.2-py3-none-any.whl", hash = "sha256:15d494fdd4a528493e8600d22aada6258ce4f7f84f9dd499878a54483006fe0b", size = 1760764, upload-time = "2024-10-18T17:37:40.457Z" },
 ]
 
-[package.optional-dependencies]
-cucim = [
-    { name = "cucim", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-]
-
 [[package]]
 name = "smac"
 version = "1.4.0"
@@ -3093,8 +3091,17 @@ dependencies = [
 
 [package.dev-dependencies]
 benchmark = [
+    { name = "cucim" },
+    { name = "llvmlite" },
+    { name = "matplotlib" },
+    { name = "numba" },
+    { name = "numpy" },
+    { name = "prettytable" },
+    { name = "scikit-image" },
     { name = "slideflow" },
-    { name = "slideflow", extra = ["cucim"], marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "torchstain" },
+    { name = "torchvision" },
+    { name = "umap-learn" },
 ]
 dev = [
     { name = "ipykernel" },
@@ -3117,8 +3124,17 @@ requires-dist = [{ name = "torch", specifier = ">=2.0.0" }]
 
 [package.metadata.requires-dev]
 benchmark = [
-    { name = "slideflow", marker = "platform_machine != 'x86_64' or sys_platform != 'linux'", specifier = ">=3.0.0" },
-    { name = "slideflow", extras = ["cucim"], marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", specifier = ">=3.0.0" },
+    { name = "cucim" },
+    { name = "llvmlite", specifier = ">=0.45.0" },
+    { name = "matplotlib" },
+    { name = "numba", specifier = ">=0.60.0" },
+    { name = "numpy" },
+    { name = "prettytable" },
+    { name = "scikit-image" },
+    { name = "slideflow" },
+    { name = "torchstain", git = "https://github.com/EIDOSLAB/torchstain.git?rev=development" },
+    { name = "torchvision" },
+    { name = "umap-learn", specifier = ">=0.5.9" },
 ]
 dev = [
     { name = "ipykernel", specifier = ">=7.0.1" },
@@ -3349,13 +3365,9 @@ wheels = [
 [[package]]
 name = "torchstain"
 version = "1.4.1"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/EIDOSLAB/torchstain.git?rev=development#04331ac2684c4247554128f0856db14002d1d96e" }
 dependencies = [
     { name = "numpy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/ac/c9/9a60bbe7e8b0150f656f4153d58209bba7a5b8312c4a9f835d41dc9cfee7/torchstain-1.4.1.tar.gz", hash = "sha256:6469c29d7dd8e231aff4bd76d23b138cd2ac97cc81128c979ec2d3468641ecdc", size = 23160, upload-time = "2025-01-13T15:52:51.987Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d9/dc/e6740cc6ad34f3bf74cba6346afaf427b521c815857ff5d8c1ea8e783774/torchstain-1.4.1-py3-none-any.whl", hash = "sha256:9861320e082b92cb36520109d83f111b4518c06777bdf207800327f0f4a26b2d", size = 37876, upload-time = "2025-01-13T15:52:50.199Z" },
 ]
 
 [[package]]
