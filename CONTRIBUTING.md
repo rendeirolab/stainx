@@ -35,12 +35,17 @@ flowchart TB
         RECU["ReinhardCUDA"]
         MACU["MacenkoCUDA"]
   end
- subgraph subGraph6["CUDA Extension"]
+ subgraph subGraph6["Pure CUDA Kernels (csrc/)"]
+        HM_PURE["histogram_matching.cu"]
+        RE_PURE["reinhard.cu"]
+        MA_PURE["macenko.cu"]
+  end
+ subgraph subGraph7["PyTorch CUDA Extension"]
         SC["stainx_cuda_torch"]
-        CU[".cu files"]
-        HM_CU["histogram_matching.cu"]
-        RE_CU["reinhard.cu"]
-        MA_CU["macenko.cu"]
+        HM_WRAP["histogram_matching.cu"]
+        RE_WRAP["reinhard.cu"]
+        MA_WRAP["macenko.cu"]
+        BIND["bindings.cpp"]
   end
  subgraph Utilities["Utilities"]
         UTILS["utils.py"]
@@ -64,8 +69,13 @@ flowchart TB
     HMCU -- calls --> SC
     RECU -- calls --> SC
     MACU -- calls --> SC
-    SC -- compiled from --> CU
-    CU --> HM_CU & RE_CU & MA_CU
+    SC -- compiled from --> HM_WRAP
+    SC -- compiled from --> RE_WRAP
+    SC -- compiled from --> MA_WRAP
+    SC -- compiled from --> BIND
+    HM_WRAP -- includes kernels from --> HM_PURE
+    RE_WRAP -- includes kernels from --> RE_PURE
+    MA_WRAP -- includes kernels from --> MA_PURE
     UTILS --> GD & CFC
     REPT -- uses --> RGB2LAB & LAB2RGB
     SNB -- uses --> GD
@@ -76,6 +86,9 @@ flowchart TB
     style PTBB fill:#e8f5e9
     style CUBB fill:#fce4ec
     style SC fill:#f3e5f5
+    style HM_PURE fill:#fff9c4
+    style RE_PURE fill:#fff9c4
+    style MA_PURE fill:#fff9c4
 ```
 
 **Key Components:**
@@ -106,8 +119,9 @@ make fix          # Auto-fix issues
    - Implement algorithm in PyTorch
 
 3. **Implement CUDA backend** (optional):
-   - Add `.cu` file in `src/stainx_cuda_torch/csrc/`
-   - Add bindings in `src/stainx_cuda_torch/__init__.py`
+   - Add pure CUDA kernels in `csrc/` (no dependencies)
+   - Add PyTorch wrapper in `src/stainx_cuda_torch/csrc/` that includes kernels from `csrc/`
+   - Add bindings in `src/stainx_cuda_torch/csrc/bindings.cpp`
    - Create backend class in `src/stainx/backends/torch_cuda_backend.py`
 
 4. **Add tests** in `tests/`:
