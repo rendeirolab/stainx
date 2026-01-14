@@ -20,10 +20,11 @@ except ImportError:
 
 class PyTorchCUDABackendBase:
     """Base class for PyTorch-specific CUDA backend implementations.
-    
+
     This class handles PyTorch tensor operations and device management for CUDA backends.
     For CuPy-based CUDA backends, use CupyCUDABackendBase instead.
     """
+
     def __init__(self, device: str | torch.device | None = None):
         if not CUDA_AVAILABLE:
             raise ImportError("stainx_cuda_torch package is not installed or built. CUDA backend is not available. Use backend='pytorch' instead.")

@@ -178,7 +178,12 @@ class CUDAExtensionBuilder:
         # Try to create and build the extension
         try:
             extension = CUDAExtension(
-                name="stainx_cuda_torch.stainx_cuda_torch", sources=sources, include_dirs=[include_dir], define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))], extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags}, extra_link_args=["-lcudart", "-lcublas", "-lcusolver"]
+                name="stainx_cuda_torch.stainx_cuda_torch",
+                sources=sources,
+                include_dirs=[include_dir],
+                define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))],
+                extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags},
+                extra_link_args=["-lcudart", "-lcublas", "-lcusolver"],
             )
             return [extension]
         except (OSError, RuntimeError) as e:
