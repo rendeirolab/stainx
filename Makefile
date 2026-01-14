@@ -30,6 +30,9 @@ build:
 		echo "uv is not installed. Installing uv..."; \
 		curl -LsSf https://astral.sh/uv/install.sh | sh; \
 	fi
+	@echo "Creating virtual environment if not exists..."
+	@$(UV) venv .venv --seed
+	@$(UV) sync --dev
 	@echo "Building distribution packages with uv build..."
 	$(UV) build
 	@echo "Build complete! Artifacts are in dist/"
