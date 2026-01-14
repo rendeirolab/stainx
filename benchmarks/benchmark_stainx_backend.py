@@ -16,7 +16,7 @@ from prettytable import PrettyTable
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from stainx import Macenko, Reinhard
+from stainx import HistogramMatching, Macenko, Reinhard
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "."))
 
@@ -33,6 +33,9 @@ def run_benchmark(method: str, reference_batch: torch.Tensor, source_batch: torc
     elif method == "macenko":
         stainx_cuda_backend = Macenko(device="cuda", backend=backend)
         stainx_pytorch_cuda = Macenko(device="cuda", backend="pytorch")
+    elif method == "histogram_matching":
+        stainx_cuda_backend = HistogramMatching(device="cuda", backend=backend)
+        stainx_pytorch_cuda = HistogramMatching(device="cuda", backend="pytorch")
     else:
         raise ValueError(f"Invalid method: {method}")
 
@@ -49,7 +52,7 @@ def run_benchmark(method: str, reference_batch: torch.Tensor, source_batch: torc
 
 def main():
     parser = argparse.ArgumentParser(description="Benchmark StainX CUDA backend against PyTorch CUDA device")
-    parser.add_argument("--method", type=str, required=True, choices=["reinhard", "macenko"], help="Normalization method to benchmark (reinhard or macenko)")
+    parser.add_argument("--method", type=str, required=True, choices=["reinhard", "macenko", "histogram_matching"], help="Normalization method to benchmark (reinhard, macenko, or histogram_matching)")
     parser.add_argument("--image-size", nargs="+", type=int, default=[16, 32, 64, 128, 256, 512], help="Image sizes to test (single number per size, creates square images: size x size)")
     parser.add_argument("--channels", type=int, default=3, help="Number of channels")
     parser.add_argument("--warmup", type=int, default=25, help="Number of warmup iterations")
@@ -81,7 +84,8 @@ def main():
     np.random.seed(args.seed)
 
     image_sizes = [(size, size) for size in args.image_size]
-    method_name = args.method.capitalize()
+    # Format method name: "histogram_matching" -> "Histogram Matching", "reinhard" -> "Reinhard"
+    method_name = " ".join(word.capitalize() for word in args.method.split("_"))
     total_tests = len(args.batch_size) * len(image_sizes)
     current_test = 0
     result_tables = []

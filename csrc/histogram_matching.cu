@@ -27,84 +27,10 @@ __global__ void convert_to_uint8_kernel(const float* input, uint8_t* output, boo
     }
 }
 
-// Kernel to compute histogram using atomic operations
-__global__ void compute_histogram_kernel(const uint8_t* input, float* histogram, int num_pixels) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < num_pixels) {
-        uint8_t value = input[idx];
-        atomicAdd(&histogram[value], 1.0f);
-    }
-}
-
 // Kernel to normalize histogram (divide by sum)
 __global__ void normalize_histogram_kernel(float* histogram, float sum, int num_bins) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < num_bins) { histogram[idx] = histogram[idx] / (sum + 1e-8f); }
-}
-
-// Kernel to build lookup table from source and reference CDFs
-// This matches the PyTorch implementation using searchsorted-like logic
-__global__ void build_lookup_table_kernel(const float* source_cdf, const float* ref_cdf, float* lookup_table, int num_bins) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < num_bins) {
-        float source_quantile = source_cdf[idx];
-        float ref_min         = ref_cdf[0];
-        float ref_max         = ref_cdf[num_bins - 1];
-
-        // Binary search to find position (similar to searchsorted)
-        int left  = 0;
-        int right = num_bins;
-        int mid;
-
-        while (left < right) {
-            mid = (left + right) / 2;
-            if (ref_cdf[mid] < source_quantile) {
-                left = mid + 1;
-            } else {
-                right = mid;
-            }
-        }
-
-        // Clamp indices
-        int indices = max(1, min(left, num_bins - 1));
-
-        // Get quantiles for interpolation
-        float quantile_left  = ref_cdf[indices - 1];
-        float quantile_right = ref_cdf[indices];
-        float quantile_diff  = quantile_right - quantile_left;
-
-        // Compute alpha for interpolation
-        float alpha = 0.0f;
-        if (quantile_diff > 1e-10f) { alpha = (source_quantile - quantile_left) / quantile_diff; }
-
-        // Interpolate values (ref_values is just 0..255, so we use indices directly)
-        float matched_value = (indices - 1) + alpha;
-
-        // Handle edge cases (matching PyTorch backend: apply below_min first, then above_max)
-        bool below_min = (source_quantile <= ref_min);
-        bool above_max = (source_quantile >= ref_max);
-
-        // Apply edge case handling in same order as PyTorch: below_min first, then above_max
-        if (below_min) { matched_value = 0.0f; }
-        if (above_max) { matched_value = (float) (num_bins - 1); }
-
-        lookup_table[idx] = fmaxf(0.0f, fminf(255.0f, matched_value));
-    }
-}
-
-// Kernel to apply lookup table to input image
-__global__ void apply_lookup_table_kernel(const uint8_t* input, const float* lookup_table, float* output, int num_pixels) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < num_pixels) {
-        uint8_t pixel_value = input[idx];
-        output[idx]         = lookup_table[pixel_value];
-    }
-}
-
-// Kernel to zero out a buffer
-__global__ void zero_kernel(float* data, int size) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < size) { data[idx] = 0.0f; }
 }
 
 // Kernel to scale and clamp output
