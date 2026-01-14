@@ -172,15 +172,18 @@ class CUDAExtensionBuilder:
         source_files = ["bindings.cpp", "histogram_matching.cu", "reinhard.cu", "macenko.cu"]
         sources = [str(Path("src") / "stainx_cuda_torch" / "csrc" / f) for f in source_files]
 
-        # Include directory - use relative path
-        include_dir = str(Path("src") / "stainx_cuda_torch" / "csrc")
+        # Include directories - the PyTorch wrapper directory and project root (for csrc includes)
+        include_dirs = [
+            str(Path("src") / "stainx_cuda_torch" / "csrc"),
+            str(self.project_root),  # Project root for including csrc/ files
+        ]
 
         # Try to create and build the extension
         try:
             extension = CUDAExtension(
                 name="stainx_cuda_torch.stainx_cuda_torch",
                 sources=sources,
-                include_dirs=[include_dir],
+                include_dirs=include_dirs,
                 define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))],
                 extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags},
                 extra_link_args=["-lcudart", "-lcublas", "-lcusolver"],
