@@ -15,7 +15,7 @@ class Macenko(NormalizerTemplate):
         self._target_max_conc = None
 
     def _get_cuda_class(self):
-        from stainx.backends.cuda_backend import MacenkoCUDA
+        from stainx.backends.torch_cuda_backend import MacenkoCUDA
 
         return MacenkoCUDA
 

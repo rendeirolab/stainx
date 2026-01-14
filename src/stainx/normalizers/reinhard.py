@@ -14,7 +14,7 @@ class Reinhard(NormalizerTemplate):
         self._reference_std = None
 
     def _get_cuda_class(self):
-        from stainx.backends.cuda_backend import ReinhardCUDA
+        from stainx.backends.torch_cuda_backend import ReinhardCUDA
 
         return ReinhardCUDA
 

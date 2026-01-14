@@ -30,7 +30,7 @@ flowchart TB
         LAB2RGB["lab_to_rgb"]
   end
  subgraph subGraph5["CUDA Backend Implementations"]
-        CUBB["CUDABackendBase"]
+        CUBB["PyTorchCUDABackendBase"]
         HMCU["HistogramMatchingCUDA"]
         RECU["ReinhardCUDA"]
         MACU["MacenkoCUDA"]
@@ -108,7 +108,7 @@ make fix          # Auto-fix issues
 3. **Implement CUDA backend** (optional):
    - Add `.cu` file in `src/stainx_cuda_torch/csrc/`
    - Add bindings in `src/stainx_cuda_torch/__init__.py`
-   - Create backend class in `src/stainx/backends/cuda_backend.py`
+   - Create backend class in `src/stainx/backends/torch_cuda_backend.py`
 
 4. **Add tests** in `tests/`:
    - Test correctness against reference implementation

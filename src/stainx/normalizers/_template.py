@@ -22,7 +22,7 @@ class NormalizerTemplate(StainNormalizerBase):
 
     def _select_backend(self) -> str:
         try:
-            from stainx.backends.cuda_backend import CUDA_AVAILABLE
+            from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
 
             if CUDA_AVAILABLE and torch.cuda.is_available() and self.device.type == "cuda":
                 return "cuda"
@@ -63,7 +63,7 @@ class NormalizerTemplate(StainNormalizerBase):
         """Get the best available backend for computation (CUDA device if available, else PyTorch)."""
         # Check if CUDA is available and use CUDA device if possible
         try:
-            from stainx.backends.cuda_backend import CUDA_AVAILABLE
+            from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
 
             # Use CUDA device if CUDA is available and device is CUDA
             device = (torch.device("cuda") if self.device.type == "cuda" or (isinstance(self.device, str) and self.device == "cuda") else self.device) if CUDA_AVAILABLE and torch.cuda.is_available() else self.device

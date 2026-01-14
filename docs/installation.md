@@ -48,7 +48,7 @@ print(f"Output shape: {normalized.shape}")
 To check if the CUDA backend is available:
 
 ```python
-from stainx.backends.cuda_backend import CUDA_AVAILABLE
+from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
 
 if CUDA_AVAILABLE:
     print("CUDA backend is available!")

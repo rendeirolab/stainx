@@ -20,7 +20,7 @@ class HistogramMatching(NormalizerTemplate):
         self._ref_histograms_256 = None
 
     def _get_cuda_class(self):
-        from stainx.backends.cuda_backend import HistogramMatchingCUDA
+        from stainx.backends.torch_cuda_backend import HistogramMatchingCUDA
 
         return HistogramMatchingCUDA
 

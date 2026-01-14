@@ -58,7 +58,7 @@ See the [Benchmarks](../benchmarks.md) page for detailed performance comparisons
 ## Check Backend Availability
 
 ```python
-from stainx.backends.cuda_backend import CUDA_AVAILABLE
+from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
 
 if CUDA_AVAILABLE:
     print("CUDA backend is available!")
