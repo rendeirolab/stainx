@@ -8,6 +8,7 @@ from typing import Any
 # Optional backend imports - only used if available
 try:
     import torch
+
     _TORCH_AVAILABLE = True
 except ImportError:
     _TORCH_AVAILABLE = False
@@ -15,6 +16,7 @@ except ImportError:
 
 try:
     import cupy as cp
+
     _CUPY_AVAILABLE = True
 except ImportError:
     _CUPY_AVAILABLE = False
@@ -25,14 +27,14 @@ from stainx.base import StainNormalizerBase
 
 class NormalizerTemplate(StainNormalizerBase):
     """Template class for normalizers with backend selection.
-    
+
     This class is backend-agnostic and can work with PyTorch, CuPy, or other backends.
     PyTorch is used by default but can be replaced by other backends.
     """
-    
+
     def __init__(self, device: str | Any | None = None, backend: str | None = None):
         """Initialize the normalizer template.
-        
+
         Args:
             device: Device specification (string or device-like object).
             backend: Backend name ("pytorch", "cuda", "cupy", etc.). If None, auto-selects.
@@ -46,11 +48,10 @@ class NormalizerTemplate(StainNormalizerBase):
 
     def _init_algorithm_attributes(self):
         """Initialize algorithm-specific attributes. Override in subclasses."""
-        pass
 
     def _select_backend(self) -> str:
         """Select the best available backend based on device and availability.
-        
+
         Returns:
             Backend name string ("pytorch", "cuda", "cupy", etc.).
         """
@@ -60,27 +61,27 @@ class NormalizerTemplate(StainNormalizerBase):
             device_type = self.device.type
         elif isinstance(self.device, str):
             device_type = self.device
-        
+
         # Try CUDA backend (PyTorch CUDA extension)
         if device_type == "cuda":
             try:
                 from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
+
                 # Check if PyTorch CUDA is available
                 if _TORCH_AVAILABLE and CUDA_AVAILABLE and torch.cuda.is_available():
                     return "cuda"
             except (ImportError, AttributeError):
                 pass
-        
+
         # Try CuPy backend (future support)
-        if device_type == "cuda":
-            if _CUPY_AVAILABLE:
-                try:
-                    if cp.cuda.is_available():
-                        # CuPy backend not yet implemented, fall through to PyTorch
-                        pass
-                except (AttributeError, RuntimeError):
+        if device_type == "cuda" and _CUPY_AVAILABLE:
+            try:
+                if cp.cuda.is_available():
+                    # CuPy backend not yet implemented, fall through to PyTorch
                     pass
-        
+            except (AttributeError, RuntimeError):
+                pass
+
         # Default to PyTorch backend
         return "pytorch"
 
@@ -104,10 +105,10 @@ class NormalizerTemplate(StainNormalizerBase):
 
     def fit(self, images: Any) -> "NormalizerTemplate":
         """Fit the normalizer to reference images.
-        
+
         Args:
             images: Input images (tensor-like object from any backend).
-            
+
         Returns:
             Self for method chaining.
         """
@@ -117,10 +118,10 @@ class NormalizerTemplate(StainNormalizerBase):
 
     def transform(self, images: Any) -> Any:
         """Transform images using the fitted normalizer.
-        
+
         Args:
             images: Input images (tensor-like object from any backend).
-            
+
         Returns:
             Normalized images (same type as input).
         """
@@ -133,10 +134,10 @@ class NormalizerTemplate(StainNormalizerBase):
 
     def _get_backend_for_computation(self):
         """Get the best available backend for computation.
-        
+
         This method is used for fitting operations that may need a specific backend.
         By default, uses PyTorch backend for fitting (CUDA backends typically don't have fit methods).
-        
+
         Returns:
             Backend implementation instance.
         """
@@ -146,14 +147,16 @@ class NormalizerTemplate(StainNormalizerBase):
             device_type = self.device.type
         elif isinstance(self.device, str):
             device_type = self.device
-        
+
         # Try to use CUDA device if available
         device = self.device
         if device_type == "cuda":
             try:
                 from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
+
                 try:
                     import torch
+
                     if CUDA_AVAILABLE and torch.cuda.is_available():
                         device = torch.device("cuda")
                 except ImportError:
@@ -173,7 +176,7 @@ class NormalizerTemplate(StainNormalizerBase):
 
     def _compute_reference_params(self, images: Any) -> None:
         """Compute reference parameters from images. Override in subclasses.
-        
+
         Args:
             images: Input images (tensor-like object from any backend).
         """
@@ -181,7 +184,7 @@ class NormalizerTemplate(StainNormalizerBase):
 
     def _get_reference_params(self) -> tuple:
         """Get reference parameters for transformation. Override in subclasses.
-        
+
         Returns:
             Tuple of reference parameters.
         """

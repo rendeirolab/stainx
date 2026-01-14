@@ -10,6 +10,7 @@ import numpy as np
 # Optional backend imports - only used if available
 try:
     import torch
+
     _TORCH_AVAILABLE = True
 except ImportError:
     _TORCH_AVAILABLE = False
@@ -17,6 +18,7 @@ except ImportError:
 
 try:
     import cupy as cp
+
     _CUPY_AVAILABLE = True
 except ImportError:
     _CUPY_AVAILABLE = False
@@ -53,48 +55,48 @@ def _get_default_device() -> Any:
             return torch.device("cuda")
         if torch.backends.mps.is_available():
             return torch.device("mps")
-    
+
     # Try CuPy CUDA
     device = _get_cupy_device("cuda")
     if device is not None:
         return device
-    
+
     # Fallback to CPU
     return _get_torch_device("cpu") or "cpu"
 
 
 def get_device(device: str | Any | None) -> Any:
     """Get device object from any backend.
-    
+
     This function is backend-agnostic and supports:
     - PyTorch devices (if PyTorch is available)
     - CuPy devices (if CuPy is available)
     - String device specifications ("cpu", "cuda", etc.)
-    
+
     Args:
         device: Device specification (string or device-like object).
-        
+
     Returns:
         Device object from the available backend, or string if no backend available.
     """
     # Return default device if None
     if device is None:
         return _get_default_device()
-    
+
     # Return device object as-is if already a device object
     if not isinstance(device, str):
         return device
-    
+
     # Try to create device from string
     # Priority: PyTorch > CuPy > string fallback
     device_obj = _get_torch_device(device)
     if device_obj is not None:
         return device_obj
-    
+
     device_obj = _get_cupy_device(device)
     if device_obj is not None:
         return device_obj
-    
+
     # Return string if no backend can handle it
     return device
 

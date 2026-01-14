@@ -11,14 +11,14 @@ from stainx.utils import get_device
 
 class StainNormalizerBase(ABC):
     """Base class for stain normalizers.
-    
+
     This class is backend-agnostic and does not depend on PyTorch.
     PyTorch support is optional and can be enabled by subclasses.
     """
-    
+
     def __init__(self, device: str | Any | None = None):
         """Initialize the normalizer.
-        
+
         Args:
             device: Device specification (string or device-like object).
                    Can be "cpu", "cuda", "mps", or a device object from any backend.
@@ -29,33 +29,31 @@ class StainNormalizerBase(ABC):
     @abstractmethod
     def fit(self, images: Any) -> "StainNormalizerBase":
         """Fit the normalizer to reference images.
-        
+
         Args:
             images: Input images (tensor-like object from any backend).
-            
+
         Returns:
             Self for method chaining.
         """
-        pass
 
     @abstractmethod
     def transform(self, images: Any) -> Any:
         """Transform images using the fitted normalizer.
-        
+
         Args:
             images: Input images (tensor-like object from any backend).
-            
+
         Returns:
             Normalized images (same type as input).
         """
-        pass
 
     def fit_transform(self, images: Any) -> Any:
         """Fit and transform images in one step.
-        
+
         Args:
             images: Input images (tensor-like object from any backend).
-            
+
         Returns:
             Normalized images (same type as input).
         """
