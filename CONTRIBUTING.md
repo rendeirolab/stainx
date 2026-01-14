@@ -19,7 +19,7 @@ flowchart TB
  subgraph subGraph1["Normalizer Template Layer"]
         NT["NormalizerTemplate"]
         SNB["StainNormalizerBase"]
-        nn.Module["torch.nn.Module"]
+        ABC["abc.ABC"]
   end
  subgraph subGraph4["PyTorch Backend Implementations"]
         PTBB["PyTorchBackendBase"]
@@ -53,7 +53,7 @@ flowchart TB
         CFC["ChannelFormatConverter"]
   end
     NT -- inherits --> SNB
-    SNB -- inherits --> nn.Module
+    SNB -- inherits --> ABC
     HM -- inherits --> NT
     RE -- inherits --> NT
     MA -- inherits --> NT
@@ -94,8 +94,11 @@ flowchart TB
 **Key Components:**
 - **User API**: `HistogramMatching`, `Reinhard`, `Macenko` classes
 - **Template Layer**: `NormalizerTemplate` handles backend selection
+- **Base Classes**: `StainNormalizerBase` and `NormalizerTemplate` are backend-agnostic (no hard PyTorch dependency)
 - **Backends**: PyTorch (pure Python) and CUDA (optimized kernels)
-- **Utilities**: Device detection, channel format conversion
+- **Pure CUDA Kernels**: Located in `csrc/`, no dependencies, reusable by any CUDA interface
+- **PyTorch CUDA Extension**: Wrappers in `src/stainx_cuda_torch/csrc/` that include pure kernels
+- **Utilities**: Backend-agnostic device detection, channel format conversion
 
 ## Contributing
 
