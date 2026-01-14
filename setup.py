@@ -125,7 +125,7 @@ class CUDAExtensionBuilder:
 
     def __init__(self, project_root: Path):
         self.project_root = project_root
-        self.csrc_dir = project_root / "src" / "stainx_cuda" / "csrc"
+        self.csrc_dir = project_root / "src" / "stainx_cuda_torch" / "csrc"
         self.device_info = CUDADeviceInfo()
         self.version_checker = PyTorchVersionChecker()
         self.flags_manager = NVCCFlagsManager()
@@ -170,15 +170,15 @@ class CUDAExtensionBuilder:
 
         # Define source files - use relative paths from setup.py directory
         source_files = ["bindings.cpp", "histogram_matching.cu", "reinhard.cu", "macenko.cu"]
-        sources = [str(Path("src") / "stainx_cuda" / "csrc" / f) for f in source_files]
+        sources = [str(Path("src") / "stainx_cuda_torch" / "csrc" / f) for f in source_files]
 
         # Include directory - use relative path
-        include_dir = str(Path("src") / "stainx_cuda" / "csrc")
+        include_dir = str(Path("src") / "stainx_cuda_torch" / "csrc")
 
         # Try to create and build the extension
         try:
             extension = CUDAExtension(
-                name="stainx_cuda.stainx_cuda", sources=sources, include_dirs=[include_dir], define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))], extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags}, extra_link_args=["-lcudart", "-lcublas", "-lcusolver"]
+                name="stainx_cuda_torch.stainx_cuda_torch", sources=sources, include_dirs=[include_dir], define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))], extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags}, extra_link_args=["-lcudart", "-lcublas", "-lcusolver"]
             )
             return [extension]
         except (OSError, RuntimeError) as e:
@@ -257,9 +257,9 @@ else:
 
 # Package discovery - use find_packages to automatically discover all packages and subpackages
 packages = find_packages(where="src")
-# Ensure stainx_cuda is included even if it doesn't have __init__.py with Python code
-if "stainx_cuda" not in packages:
-    packages.append("stainx_cuda")
+# Ensure stainx_cuda_torch is included even if it doesn't have __init__.py with Python code
+if "stainx_cuda_torch" not in packages:
+    packages.append("stainx_cuda_torch")
 
 with open("README.md") as f:
     long_description = f.read()

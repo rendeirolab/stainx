@@ -36,7 +36,7 @@ flowchart TB
         MACU["MacenkoCUDA"]
   end
  subgraph subGraph6["CUDA Extension"]
-        SC["stainx_cuda"]
+        SC["stainx_cuda_torch"]
         CU[".cu files"]
         HM_CU["histogram_matching.cu"]
         RE_CU["reinhard.cu"]
@@ -106,8 +106,8 @@ make fix          # Auto-fix issues
    - Implement algorithm in PyTorch
 
 3. **Implement CUDA backend** (optional):
-   - Add `.cu` file in `src/stainx_cuda/csrc/`
-   - Add bindings in `src/stainx_cuda/__init__.py`
+   - Add `.cu` file in `src/stainx_cuda_torch/csrc/`
+   - Add bindings in `src/stainx_cuda_torch/__init__.py`
    - Create backend class in `src/stainx/backends/cuda_backend.py`
 
 4. **Add tests** in `tests/`:

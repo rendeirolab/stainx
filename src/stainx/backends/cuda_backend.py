@@ -6,22 +6,22 @@
 import torch
 
 try:
-    import stainx_cuda
+    import stainx_cuda_torch
 
     # Check if functions are actually available, not just if package imports
-    CUDA_AVAILABLE = getattr(stainx_cuda, "FUNCTIONS_AVAILABLE", False)
+    CUDA_AVAILABLE = getattr(stainx_cuda_torch, "FUNCTIONS_AVAILABLE", False)
     if not CUDA_AVAILABLE:
-        print("DEBUG: stainx_cuda imported but FUNCTIONS_AVAILABLE=False - CUDA backend not available")
+        print("DEBUG: stainx_cuda_torch imported but FUNCTIONS_AVAILABLE=False - CUDA backend not available")
 except ImportError:
     CUDA_AVAILABLE = False
-    stainx_cuda = None
-    print("DEBUG: stainx_cuda package could not be imported - CUDA backend not available")
+    stainx_cuda_torch = None
+    print("DEBUG: stainx_cuda_torch package could not be imported - CUDA backend not available")
 
 
 class CUDABackendBase:
     def __init__(self, device: str | torch.device | None = None):
         if not CUDA_AVAILABLE:
-            raise ImportError("stainx_cuda package is not installed or built. CUDA backend is not available. Use backend='pytorch' instead.")
+            raise ImportError("stainx_cuda_torch package is not installed or built. CUDA backend is not available. Use backend='pytorch' instead.")
 
         if device is None:
             if torch.cuda.is_available():
@@ -92,12 +92,12 @@ class HistogramMatchingCUDA(CUDABackendBase):
                 raise ValueError(f"reference_histogram must be 1D with 256 elements. Got shape {ref_hist.sizes()}")
 
         # Check if CUDA function is available
-        if not hasattr(stainx_cuda, "histogram_matching"):
-            raise RuntimeError("stainx_cuda.histogram_matching is not available. The CUDA extension may not be built correctly.")
+        if not hasattr(stainx_cuda_torch, "histogram_matching"):
+            raise RuntimeError("stainx_cuda_torch.histogram_matching is not available. The CUDA extension may not be built correctly.")
 
         # Call CUDA implementation (expects and returns (N, C, H, W) format)
         # CUDA function now accepts either (256,) or (C, 256) tensor
-        result = stainx_cuda.histogram_matching(images, ref_hist)
+        result = stainx_cuda_torch.histogram_matching(images, ref_hist)
 
         # Restore to original channel format if needed (matching PyTorch backend logic)
         if needs_permute:
@@ -114,11 +114,11 @@ class ReinhardCUDA(CUDABackendBase):
         target_std = target_std.to(self.device)
 
         # Check if CUDA function is available
-        if not hasattr(stainx_cuda, "reinhard"):
-            raise RuntimeError("stainx_cuda.reinhard is not available. The CUDA extension may not be built correctly.")
+        if not hasattr(stainx_cuda_torch, "reinhard"):
+            raise RuntimeError("stainx_cuda_torch.reinhard is not available. The CUDA extension may not be built correctly.")
 
         # Call CUDA implementation
-        return stainx_cuda.reinhard(images, target_mean, target_std)
+        return stainx_cuda_torch.reinhard(images, target_mean, target_std)
 
 
 class MacenkoCUDA(CUDABackendBase):
@@ -128,8 +128,8 @@ class MacenkoCUDA(CUDABackendBase):
         target_max_conc = target_max_conc.to(self.device)
 
         # Check if CUDA function is available
-        if not hasattr(stainx_cuda, "macenko"):
-            raise RuntimeError("stainx_cuda.macenko is not available. The CUDA extension may not be built correctly.")
+        if not hasattr(stainx_cuda_torch, "macenko"):
+            raise RuntimeError("stainx_cuda_torch.macenko is not available. The CUDA extension may not be built correctly.")
 
         # Call CUDA implementation
-        return stainx_cuda.macenko(images, stain_matrix, target_max_conc)
+        return stainx_cuda_torch.macenko(images, stain_matrix, target_max_conc)

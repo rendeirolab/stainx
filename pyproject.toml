@@ -30,7 +30,7 @@ classifiers = [
 ]
 
 [tool.setuptools.package-data]
-stainx_cuda = ["csrc/*.cpp", "csrc/*.cu", "csrc/*.h", "csrc/*.hpp", "csrc/*.cuh"]
+stainx_cuda_torch = ["csrc/*.cpp", "csrc/*.cu", "csrc/*.h", "csrc/*.hpp", "csrc/*.cuh"]
 
 [dependency-groups]
 dev = [

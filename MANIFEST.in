@@ -5,8 +5,8 @@ include setup.py
 
 # Include source code
 recursive-include src/stainx *.py
-recursive-include src/stainx_cuda *.py
-recursive-include src/stainx_cuda/csrc *.cpp *.cu *.h *.hpp *.cuh
+recursive-include src/stainx_cuda_torch *.py
+recursive-include src/stainx_cuda_torch/csrc *.cpp *.cu *.h *.hpp *.cuh
 
 # Exclude build artifacts
 global-exclude *.py[cod]
