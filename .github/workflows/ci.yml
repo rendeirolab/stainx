@@ -73,7 +73,7 @@ jobs:
 
       - name: Check C++/CUDA code formatting
         run: |
-          find src/stainx_cuda/csrc/ -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -o -name "*.cu" -o -name "*.cuh" | xargs clang-format --dry-run --Werror
+          find src/stainx_cuda_torch/csrc/ -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -o -name "*.cu" -o -name "*.cuh" | xargs clang-format --dry-run --Werror
 
       - name: Check Python code with ruff
         run: |
@@ -231,9 +231,9 @@ jobs:
         run: |
           uv run python -c "
           try:
-              import stainx_cuda
+              import stainx_cuda_torch
               print(f'CUDA extension imported successfully')
-              print(f'Functions available: {getattr(stainx_cuda, \"FUNCTIONS_AVAILABLE\", False)}')
+              print(f'Functions available: {getattr(stainx_cuda_torch, \"FUNCTIONS_AVAILABLE\", False)}')
           except ImportError as e:
               print(f'Failed to import CUDA extension: {e}')
               exit(1)
