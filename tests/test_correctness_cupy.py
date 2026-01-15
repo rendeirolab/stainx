@@ -16,9 +16,6 @@ import torch
 from skimage.exposure import match_histograms
 from torchstain.torch.normalizers import TorchMacenkoNormalizer, TorchReinhardNormalizer
 
-# Skip all tests if CuPy CUDA is not available
-if not cp.cuda.is_available():
-    pytest.skip("CuPy CUDA is not available", allow_module_level=True)
 
 from stainx import HistogramMatching, Macenko, Reinhard
 from stainx.utils import ChannelFormatConverter
