@@ -19,7 +19,7 @@ import torch
 # and mark CuPy tests to skip if CUDA is not available or incompatible
 # Note: We need to handle CUDARuntimeError here to convert it to skips
 # This is the only place we handle exceptions, and it's necessary for proper skipping
-def pytest_collection_modifyitems(_config, items):
+def pytest_collection_modifyitems(config, items):  # noqa: ARG001
     """Mark CuPy tests to skip if CUDA is not available or incompatible."""
 
     # Find all CuPy tests
