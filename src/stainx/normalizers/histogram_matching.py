@@ -19,7 +19,7 @@ class HistogramMatching(NormalizerTemplate):
         self._ref_cdf = None
         self._ref_histograms_256 = None
 
-    def _get_cuda_class(self):
+    def _get_torch_cuda_class(self):
         from stainx.backends.torch_cuda_backend import HistogramMatchingCUDA
 
         return HistogramMatchingCUDA
@@ -32,7 +32,7 @@ class HistogramMatching(NormalizerTemplate):
     def _get_backend_impl(self):
         if self._backend_impl is None:
             if self.backend == "cuda":
-                cuda_class = self._get_cuda_class()
+                cuda_class = self._get_torch_cuda_class()
                 self._backend_impl = cuda_class(self.device, channel_axis=self.channel_axis)
             else:
                 pytorch_class = self._get_pytorch_class()
@@ -45,8 +45,8 @@ class HistogramMatching(NormalizerTemplate):
 
     def _compute_reference_params(self, images: torch.Tensor) -> None:
         # Automatically use CUDA backend if available, otherwise fall back to PyTorch
-        backend = self._get_backend_for_computation()
-        (self._ref_vals, self._ref_cdf, self._ref_histograms_256, self._reference_histogram) = backend.compute_reference_histograms(images)
+        backend = self._get_backend_for_computation_torch()
+        (self._ref_vals, self._ref_cdf, self._ref_histograms_256, self._reference_histogram) = backend.compute_reference_histograms_torch(images)
 
     def _get_reference_params(self) -> tuple:
         if self._ref_histograms_256 is not None and len(self._ref_histograms_256) > 0:

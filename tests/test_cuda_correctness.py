@@ -16,7 +16,7 @@ from stainx import HistogramMatching, Macenko, Reinhard
 from stainx.utils import ChannelFormatConverter
 
 
-def compute_relative_absolute_error(x: torch.Tensor, y: torch.Tensor) -> float:
+def compute_relative_absolute_error_torch(x: torch.Tensor, y: torch.Tensor) -> float:
     assert x.shape == y.shape, "Tensors must have the same shape"
     assert x.dtype == y.dtype, "Tensors must have the same dtype"
     assert x.device == y.device, "Tensors must be on the same device"
@@ -28,7 +28,7 @@ def compute_relative_absolute_error(x: torch.Tensor, y: torch.Tensor) -> float:
 
 
 @pytest.mark.cuda
-class TestCUDABackendComparison:
+class TestCUDABackendComparisonTorch:
     @pytest.fixture
     def cuda_device(self):
         if not torch.cuda.is_available():
@@ -60,7 +60,7 @@ class TestCUDABackendComparison:
             result_cuda = normalizer_cuda.transform(source_image_torch)
             result_cuda_cpu = result_cuda.squeeze(0).cpu().float()
 
-            rel_abs_error = compute_relative_absolute_error(result_cuda_cpu, result_pytorch_cpu)
+            rel_abs_error = compute_relative_absolute_error_torch(result_cuda_cpu, result_pytorch_cpu)
 
             assert rel_abs_error < 0.01, f"CUDA vs PyTorch Reinhard relative absolute error too large: {rel_abs_error:.6f}, expected <0.01"
         except (ImportError, NotImplementedError) as e:
@@ -83,7 +83,7 @@ class TestCUDABackendComparison:
             result_cuda = normalizer_cuda.transform(source_image_torch)
             result_cuda_cpu = result_cuda.squeeze(0).cpu().float()
 
-            rel_abs_error = compute_relative_absolute_error(result_cuda_cpu, result_pytorch_cpu)
+            rel_abs_error = compute_relative_absolute_error_torch(result_cuda_cpu, result_pytorch_cpu)
 
             assert rel_abs_error < 0.01, f"CUDA vs PyTorch Macenko relative absolute error too large: {rel_abs_error:.6f}, expected <0.01"
         except (ImportError, NotImplementedError) as e:
@@ -114,7 +114,7 @@ class TestCUDABackendComparison:
             result_cuda = normalizer_cuda.transform(src_input)
             result_cuda_chw = converter.to_chw(result_cuda, squeeze_batch=True)
 
-            rel_abs_error = compute_relative_absolute_error(result_cuda_chw, result_pytorch_chw)
+            rel_abs_error = compute_relative_absolute_error_torch(result_cuda_chw, result_pytorch_chw)
 
             assert rel_abs_error < 0.01, f"CUDA vs PyTorch histogram matching relative absolute error too large: {rel_abs_error:.6f}, expected <0.01 (channel_axis={channel_axis})"
         except (ImportError, NotImplementedError) as e:

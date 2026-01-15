@@ -9,22 +9,22 @@ import torch
 
 
 @pytest.fixture
-def sample_images():
+def sample_images_torch():
     return (torch.rand(4, 3, 256, 256) * 255).round().to(torch.uint8)
 
 
 @pytest.fixture
-def reference_images():
+def reference_images_torch():
     return (torch.rand(2, 3, 256, 256) * 255).round().to(torch.uint8)
 
 
 @pytest.fixture
-def single_image():
+def single_image_torch():
     return (torch.rand(3, 256, 256) * 255).round().to(torch.uint8)
 
 
 @pytest.fixture
-def device():
+def device_torch():
     if torch.cuda.is_available():
         return torch.device("cpu")
     if torch.backends.mps.is_available():

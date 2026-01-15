@@ -164,7 +164,7 @@ make fix          # Auto-fix issues
 1. **Create normalizer class** in `src/stainx/normalizers/`:
    - Inherit from `NormalizerTemplate`
    - Implement `fit()` and `transform()` methods
-   - Implement `_get_pytorch_class()` and optionally `_get_cupy_class()`, `_get_cuda_class()`, `_get_cupy_cuda_class()`
+   - Implement `_get_pytorch_class()` and optionally `_get_cupy_class()`, `_get_torch_cuda_class()`, `_get_cupy_cuda_class()`
 
 2. **Implement PyTorch backend** in `src/stainx/backends/torch_backend.py`:
    - Inherit from `PyTorchBackendBase`

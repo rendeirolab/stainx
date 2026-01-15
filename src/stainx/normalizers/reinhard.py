@@ -13,7 +13,7 @@ class Reinhard(NormalizerTemplate):
         self._reference_mean = None
         self._reference_std = None
 
-    def _get_cuda_class(self):
+    def _get_torch_cuda_class(self):
         from stainx.backends.torch_cuda_backend import ReinhardCUDA
 
         return ReinhardCUDA
@@ -25,8 +25,8 @@ class Reinhard(NormalizerTemplate):
 
     def _compute_reference_params(self, images: torch.Tensor) -> None:
         # Automatically use CUDA backend if available, otherwise fall back to PyTorch
-        backend = self._get_backend_for_computation()
-        self._reference_mean, self._reference_std = backend.compute_reference_mean_std(images)
+        backend = self._get_backend_for_computation_torch()
+        self._reference_mean, self._reference_std = backend.compute_reference_mean_std_torch(images)
 
     def _get_reference_params(self) -> tuple:
         return (self._reference_mean, self._reference_std)

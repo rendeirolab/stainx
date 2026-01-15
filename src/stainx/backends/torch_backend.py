@@ -14,7 +14,7 @@ class PyTorchBackendBase:
             self.device = torch.device(device)
 
     @staticmethod
-    def rgb_to_lab(rgb: torch.Tensor, channel_axis: int = 1) -> torch.Tensor:
+    def rgb_to_lab_torch(rgb: torch.Tensor, channel_axis: int = 1) -> torch.Tensor:
         if rgb.max() > 1.0:
             rgb = rgb / 255.0
 
@@ -60,7 +60,7 @@ class PyTorchBackendBase:
         return lab
 
     @staticmethod
-    def lab_to_rgb(lab: torch.Tensor, channel_axis: int = 1) -> torch.Tensor:
+    def lab_to_rgb_torch(lab: torch.Tensor, channel_axis: int = 1) -> torch.Tensor:
         if channel_axis == -1 or (channel_axis == 3 and lab.ndim == 4):
             lab = lab.permute(0, 3, 1, 2)
             needs_permute = True
@@ -101,12 +101,12 @@ class PyTorchBackendBase:
         return rgb
 
     @staticmethod
-    def normalize_to_float(images: torch.Tensor) -> torch.Tensor:
+    def normalize_to_float_torch(images: torch.Tensor) -> torch.Tensor:
         if images.max() > 1.0:
             return images.float() / 255.0
         return images.float()
 
-    def images_to_uint8(self, images: torch.Tensor) -> tuple[torch.Tensor, bool]:
+    def images_to_uint8_torch(self, images: torch.Tensor) -> tuple[torch.Tensor, bool]:
         if images.max() <= 1.0:
             images_uint8 = (images * 255.0).clamp(0, 255).to(torch.uint8)
             needs_scale_back = True
@@ -115,7 +115,7 @@ class PyTorchBackendBase:
             needs_scale_back = False
         return images_uint8, needs_scale_back
 
-    def preserve_dtype(self, result: torch.Tensor, original_dtype: torch.dtype, was_uint8_or_high_range: bool = False, result_in_0_255_range: bool = False) -> torch.Tensor:
+    def preserve_dtype_torch(self, result: torch.Tensor, original_dtype: torch.dtype, was_uint8_or_high_range: bool = False, result_in_0_255_range: bool = False) -> torch.Tensor:
         # If result is in [0, 1] range but we need [0, 255], scale it
         if not result_in_0_255_range and (original_dtype == torch.uint8 or was_uint8_or_high_range):
             result = (result * 255.0).clamp(0, 255)
@@ -126,14 +126,14 @@ class PyTorchBackendBase:
         # Convert to original dtype
         return result.to(original_dtype)
 
-    def compute_histogram_256(self, channel: torch.Tensor) -> torch.Tensor:
+    def compute_histogram_256_torch(self, channel: torch.Tensor) -> torch.Tensor:
         counts = torch.bincount(channel, minlength=256).float()
         return counts / (counts.sum() + 1e-8)
 
-    def compute_reference_histograms(self, images: torch.Tensor) -> tuple[list, list, list, torch.Tensor]:
+    def compute_reference_histograms_torch(self, images: torch.Tensor) -> tuple[list, list, list, torch.Tensor]:
         # Normalize to channels-first format for processing
-        images_normalized, _ = self._normalize_to_channels_first(images)
-        images_uint8, _ = self.images_to_uint8(images_normalized)
+        images_normalized, _ = self._normalize_to_channels_first_torch(images)
+        images_uint8, _ = self.images_to_uint8_torch(images_normalized)
         images_uint8 = images_uint8.to(self.device)
 
         _N, C, _H, _W = images_uint8.shape
@@ -146,7 +146,7 @@ class PyTorchBackendBase:
             channel = images_uint8[:, c, :, :]
             flat_channel = channel.reshape(-1)
 
-            hist_256 = self.compute_histogram_256(flat_channel)
+            hist_256 = self.compute_histogram_256_torch(flat_channel)
             ref_histograms_256.append(hist_256)
 
             counts = torch.bincount(flat_channel, minlength=256).float()
@@ -174,14 +174,14 @@ class HistogramMatchingPyTorch(PyTorchBackendBase):
         super().__init__(device)
         self.channel_axis = channel_axis
 
-    def _normalize_to_channels_first(self, images: torch.Tensor) -> tuple[torch.Tensor, bool]:
+    def _normalize_to_channels_first_torch(self, images: torch.Tensor) -> tuple[torch.Tensor, bool]:
         if self.channel_axis == -1 or (self.channel_axis == 3 and images.ndim == 4):
             # Channels-last format (N, H, W, C) -> (N, C, H, W)
             return images.permute(0, 3, 1, 2), True
         # Already channels-first (N, C, H, W)
         return images, False
 
-    def _restore_format(self, images: torch.Tensor, needs_permute: bool) -> torch.Tensor:
+    def _restore_format_torch(self, images: torch.Tensor, needs_permute: bool) -> torch.Tensor:
         if needs_permute:
             # Convert back to channels-last (N, C, H, W) -> (N, H, W, C)
             return images.permute(0, 2, 3, 1)
@@ -189,7 +189,7 @@ class HistogramMatchingPyTorch(PyTorchBackendBase):
 
     def transform(self, images: torch.Tensor, reference_histogram: torch.Tensor | list) -> torch.Tensor:
         # Normalize to channels-first format for processing
-        images_normalized, needs_permute = self._normalize_to_channels_first(images)
+        images_normalized, needs_permute = self._normalize_to_channels_first_torch(images)
         images_normalized = images_normalized.to(self.device)
 
         if isinstance(reference_histogram, list):
@@ -201,7 +201,7 @@ class HistogramMatchingPyTorch(PyTorchBackendBase):
         original_dtype = images_normalized.dtype
         was_uint8_or_high_range = images_normalized.dtype == torch.uint8 or images_normalized.max() > 1.0
 
-        images_uint8, needs_scale_back = self.images_to_uint8(images_normalized)
+        images_uint8, needs_scale_back = self.images_to_uint8_torch(images_normalized)
 
         N, C, H, W = images_uint8.shape
         matched_channels = []
@@ -291,17 +291,17 @@ class HistogramMatchingPyTorch(PyTorchBackendBase):
 
         matched = matched.clamp(0.0, 1.0 if needs_scale_back else 255.0)
 
-        matched = self.preserve_dtype(matched, original_dtype, was_uint8_or_high_range, result_in_0_255_range)
+        matched = self.preserve_dtype_torch(matched, original_dtype, was_uint8_or_high_range, result_in_0_255_range)
 
         # Restore to original format
-        return self._restore_format(matched, needs_permute)
+        return self._restore_format_torch(matched, needs_permute)
 
 
 class ReinhardPyTorch(PyTorchBackendBase):
     def __init__(self, device: str | torch.device | None = None):
         super().__init__(device)
 
-    def compute_reference_mean_std(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def compute_reference_mean_std_torch(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         images = images.to(self.device, non_blocking=True)
         original_dtype = images.dtype
         was_uint8 = original_dtype == torch.uint8
@@ -309,7 +309,7 @@ class ReinhardPyTorch(PyTorchBackendBase):
         # Check range once and normalize inline
         images_float = images.float() / 255.0 if was_uint8 or images.max() > 1.0 else images.float()
 
-        lab = self.rgb_to_lab(images_float, channel_axis=1)
+        lab = self.rgb_to_lab_torch(images_float, channel_axis=1)
 
         # Compute mean and std for all channels at once (vectorized)
         # Shape: (3,) - one value per channel
@@ -335,7 +335,7 @@ class ReinhardPyTorch(PyTorchBackendBase):
         reference_mean = reference_mean.view(1, 3, 1, 1).to(self.device, non_blocking=True) if reference_mean.ndim == 1 else reference_mean.to(self.device, non_blocking=True)
         reference_std = reference_std.view(1, 3, 1, 1).to(self.device, non_blocking=True) if reference_std.ndim == 1 else reference_std.to(self.device, non_blocking=True)
 
-        lab = self.rgb_to_lab(images_float, channel_axis=1)
+        lab = self.rgb_to_lab_torch(images_float, channel_axis=1)
 
         # Compute mean and std for all channels at once (vectorized)
         lab_mean = lab.mean(dim=(0, 2, 3), keepdim=True)
@@ -344,11 +344,11 @@ class ReinhardPyTorch(PyTorchBackendBase):
         # Vectorized normalization across all channels
         lab_normalized = ((lab - lab_mean) / (lab_std + 1e-8)) * reference_std + reference_mean
 
-        rgb_normalized = self.lab_to_rgb(lab_normalized, channel_axis=1)
+        rgb_normalized = self.lab_to_rgb_torch(lab_normalized, channel_axis=1)
 
         rgb_normalized = torch.clamp(rgb_normalized, 0.0, 1.0)
 
-        return self.preserve_dtype(rgb_normalized, original_dtype, was_uint8_or_high_range, result_in_0_255_range=False)
+        return self.preserve_dtype_torch(rgb_normalized, original_dtype, was_uint8_or_high_range, result_in_0_255_range=False)
 
 
 class MacenkoPyTorch(PyTorchBackendBase):
@@ -356,12 +356,12 @@ class MacenkoPyTorch(PyTorchBackendBase):
         super().__init__(device)
 
     @staticmethod
-    def _percentile(t: torch.Tensor, q: float) -> float:
+    def _percentile_torch(t: torch.Tensor, q: float) -> float:
         k = 1 + round(0.01 * float(q) * (t.numel() - 1))
         return t.view(-1).kthvalue(k).values.item()
 
     @staticmethod
-    def _eigh_with_mps_fallback(cov: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def _eigh_with_mps_fallback_torch(cov: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         device = cov.device
         # MPS doesn't support eigh, so move to CPU for computation
         # TODO[Samir]: In the future, if this issue (https://github.com/pytorch/pytorch/issues/141287) is resolved, we can remove this fallback.
@@ -375,7 +375,7 @@ class MacenkoPyTorch(PyTorchBackendBase):
             eigvals, eigvecs = torch.linalg.eigh(cov)
         return eigvals, eigvecs
 
-    def _process_single_image(self, od: torch.Tensor, stain_matrix: torch.Tensor, target_max_conc: torch.Tensor, beta: float, alpha: float, Io: float, H: int, W: int) -> torch.Tensor:
+    def _process_single_image_torch(self, od: torch.Tensor, stain_matrix: torch.Tensor, target_max_conc: torch.Tensor, beta: float, alpha: float, Io: float, H: int, W: int) -> torch.Tensor:
         # Reshape to (H*W, 3)
         od_reshaped = od.permute(1, 2, 0).reshape(-1, 3)
 
@@ -395,15 +395,15 @@ class MacenkoPyTorch(PyTorchBackendBase):
         num_pixels = od_filtered.shape[0]
         cov = torch.matmul(od_centered, od_centered.T) / (num_pixels - 1) if num_pixels > 1 else torch.zeros((3, 3), dtype=od_centered.dtype, device=od_centered.device)
 
-        _, eigvecs = self._eigh_with_mps_fallback(cov)
+        _, eigvecs = self._eigh_with_mps_fallback_torch(cov)
         eigvecs = eigvecs[:, [1, 2]]
 
         That = torch.matmul(od_filtered, eigvecs)
         phi = torch.atan2(That[:, 1], That[:, 0])
 
         # Compute percentiles
-        min_phi = self._percentile(phi, alpha)
-        max_phi = self._percentile(phi, 100 - alpha)
+        min_phi = self._percentile_torch(phi, alpha)
+        max_phi = self._percentile_torch(phi, 100 - alpha)
 
         # Pre-compute cos/sin values
         min_phi_t = torch.tensor(min_phi, dtype=torch.float32, device=od.device)
@@ -454,8 +454,8 @@ class MacenkoPyTorch(PyTorchBackendBase):
                 concentrations = torch.matmul(HE_pinv, od_all)
 
         # Compute max concentrations
-        max_conc_0 = self._percentile(concentrations[0, :], 99)
-        max_conc_1 = self._percentile(concentrations[1, :], 99)
+        max_conc_0 = self._percentile_torch(concentrations[0, :], 99)
+        max_conc_1 = self._percentile_torch(concentrations[1, :], 99)
         max_conc = torch.stack([torch.tensor(max_conc_0, dtype=torch.float32, device=od.device), torch.tensor(max_conc_1, dtype=torch.float32, device=od.device)])
 
         # Normalize concentrations
@@ -473,8 +473,8 @@ class MacenkoPyTorch(PyTorchBackendBase):
 
         return rgb_recon.reshape(3, H, W)
 
-    def compute_reference_stain_matrix(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        images_float = self.normalize_to_float(images)
+    def compute_reference_stain_matrix_torch(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        images_float = self.normalize_to_float_torch(images)
         images_float = images_float.to(self.device)
 
         _N, _C, _H, _W = images_float.shape
@@ -498,7 +498,7 @@ class MacenkoPyTorch(PyTorchBackendBase):
         od_centered = od_for_cov - od_mean
         cov = torch.matmul(od_centered.T, od_centered) / (od_for_cov.shape[0] - 1)
 
-        _eigvals, eigvecs = self._eigh_with_mps_fallback(cov)
+        _eigvals, eigvecs = self._eigh_with_mps_fallback_torch(cov)
 
         stain_vectors = eigvecs[:, [1, 2]]
 
@@ -507,8 +507,8 @@ class MacenkoPyTorch(PyTorchBackendBase):
         phi = torch.atan2(That[:, 1], That[:, 0])
 
         alpha = 1.0
-        min_phi = self._percentile(phi, alpha)
-        max_phi = self._percentile(phi, 100 - alpha)
+        min_phi = self._percentile_torch(phi, alpha)
+        max_phi = self._percentile_torch(phi, 100 - alpha)
 
         device = stain_vectors.device
         cos_min = torch.cos(torch.tensor(min_phi, device=device))
@@ -551,7 +551,7 @@ class MacenkoPyTorch(PyTorchBackendBase):
                 HE_pinv = torch.linalg.pinv(HE)
                 concentrations = torch.matmul(HE_pinv, od_combined)
 
-        max_conc = torch.tensor([self._percentile(concentrations[0, :], 99), self._percentile(concentrations[1, :], 99)], device=self.device, dtype=torch.float32)
+        max_conc = torch.tensor([self._percentile_torch(concentrations[0, :], 99), self._percentile_torch(concentrations[1, :], 99)], device=self.device, dtype=torch.float32)
 
         return stain_matrix, max_conc
 
@@ -563,7 +563,7 @@ class MacenkoPyTorch(PyTorchBackendBase):
         original_dtype = images.dtype
         was_uint8_or_high_range = images.dtype == torch.uint8 or images.max() > 1.0
 
-        images_float = self.normalize_to_float(images)
+        images_float = self.normalize_to_float_torch(images)
 
         if stain_matrix.shape != (3, 2):
             raise ValueError(f"stain_matrix must have shape (3, 2), got {stain_matrix.shape}")
@@ -588,6 +588,6 @@ class MacenkoPyTorch(PyTorchBackendBase):
         # Process each image - loop is necessary due to variable filtered pixel counts
         for n in range(N):
             od = od_all_images[n]  # (3, H, W)
-            normalized[n] = self._process_single_image(od, stain_matrix, target_max_conc, beta, alpha, Io, H, W)
+            normalized[n] = self._process_single_image_torch(od, stain_matrix, target_max_conc, beta, alpha, Io, H, W)
 
-        return self.preserve_dtype(normalized, original_dtype, was_uint8_or_high_range, result_in_0_255_range=True)
+        return self.preserve_dtype_torch(normalized, original_dtype, was_uint8_or_high_range, result_in_0_255_range=True)

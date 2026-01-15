@@ -88,16 +88,16 @@ class NormalizerTemplate(StainNormalizerBase):
     def _get_backend_impl(self):
         if self._backend_impl is None:
             if self.backend == "cuda":
-                cuda_class = self._get_cuda_class()
+                cuda_class = self._get_torch_cuda_class()
                 self._backend_impl = cuda_class(self.device)
             else:
                 pytorch_class = self._get_pytorch_class()
                 self._backend_impl = pytorch_class(self.device)
         return self._backend_impl
 
-    def _get_cuda_class(self):
-        """Get the CUDA backend class. Override in subclasses."""
-        raise NotImplementedError("Subclasses must implement _get_cuda_class")
+    def _get_torch_cuda_class(self):
+        """Get the PyTorch CUDA backend class. Override in subclasses."""
+        raise NotImplementedError("Subclasses must implement _get_torch_cuda_class")
 
     def _get_pytorch_class(self):
         """Get the PyTorch backend class. Override in subclasses."""
@@ -132,14 +132,14 @@ class NormalizerTemplate(StainNormalizerBase):
         backend_impl = self._get_backend_impl()
         return backend_impl.transform(images, *reference_params)
 
-    def _get_backend_for_computation(self):
-        """Get the best available backend for computation.
+    def _get_backend_for_computation_torch(self):
+        """Get the best available PyTorch backend for computation.
 
         This method is used for fitting operations that may need a specific backend.
         By default, uses PyTorch backend for fitting (CUDA backends typically don't have fit methods).
 
         Returns:
-            Backend implementation instance.
+            PyTorch backend implementation instance.
         """
         # Get device type
         device_type = None
