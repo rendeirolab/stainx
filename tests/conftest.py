@@ -70,5 +70,4 @@ def device_cupy():
     if not _CUPY_CUDA_AVAILABLE:
         pytest.skip("CuPy CUDA is not available")
     # Create device - if this fails due to insufficient driver, pytest will handle it
-    device = cp.cuda.Device(0)
-    return device
+    return cp.cuda.Device(0)
