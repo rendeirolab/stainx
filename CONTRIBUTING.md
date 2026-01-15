@@ -27,8 +27,8 @@ flowchart TB
         HMPT["HistogramMatchingPyTorch"]
         REPT["ReinhardPyTorch"]
         MAPT["MacenkoPyTorch"]
-        RGB2LAB["rgb_to_lab"]
-        LAB2RGB["lab_to_rgb"]
+        RGB2LAB["rgb_to_lab_torch"]
+        LAB2RGB["lab_to_rgb_torch"]
   end
   subgraph subGraph5["PyTorch CUDA Backend Implementations"]
         CUBB["PyTorchCUDABackendBase"]
