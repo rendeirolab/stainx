@@ -4,6 +4,7 @@
 # This software is distributed under the terms of the GNU General Public License v3 (GPLv3).
 # See the LICENSE file for details.
 
+import cupy as cp
 import pytest
 import torch
 
@@ -35,3 +36,28 @@ def device_torch():
 @pytest.fixture
 def temp_dir(tmp_path):
     return tmp_path
+
+
+@pytest.fixture
+def sample_images_cupy():
+    cp.random.seed(42)
+    return (cp.random.rand(4, 3, 256, 256) * 255).round().astype(cp.uint8)
+
+
+@pytest.fixture
+def reference_images_cupy():
+    cp.random.seed(43)
+    return (cp.random.rand(2, 3, 256, 256) * 255).round().astype(cp.uint8)
+
+
+@pytest.fixture
+def single_image_cupy():
+    cp.random.seed(44)
+    return (cp.random.rand(3, 256, 256) * 255).round().astype(cp.uint8)
+
+
+@pytest.fixture
+def device_cupy():
+    if cp.cuda.is_available():
+        return cp.cuda.Device(0)
+    return cp.cuda.Device(0)  # Will raise error if CUDA not available

@@ -5,22 +5,8 @@
 # See the LICENSE file for details.
 from typing import Any
 
-# Optional backend imports - only used if available
-try:
-    import torch
-
-    _TORCH_AVAILABLE = True
-except ImportError:
-    _TORCH_AVAILABLE = False
-    torch = None
-
-try:
-    import cupy as cp
-
-    _CUPY_AVAILABLE = True
-except ImportError:
-    _CUPY_AVAILABLE = False
-    cp = None
+import cupy as cp
+import torch
 
 from stainx.base import StainNormalizerBase
 
@@ -61,6 +47,8 @@ class NormalizerTemplate(StainNormalizerBase):
             device_type = self.device.type
         elif isinstance(self.device, str):
             device_type = self.device
+        elif isinstance(self.device, cp.cuda.Device):
+            device_type = "cuda"
 
         # Try CUDA backend (Torch CUDA extension)
         if device_type == "cuda":
@@ -68,19 +56,14 @@ class NormalizerTemplate(StainNormalizerBase):
                 from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
 
                 # Check if Torch CUDA is available
-                if _TORCH_AVAILABLE and CUDA_AVAILABLE and torch.cuda.is_available():
+                if CUDA_AVAILABLE and torch.cuda.is_available():
                     return "cuda"
             except (ImportError, AttributeError):
                 pass
 
-        # Try CuPy backend (future support)
-        if device_type == "cuda" and _CUPY_AVAILABLE:
-            try:
-                if cp.cuda.is_available():
-                    # CuPy backend not yet implemented, fall through to Torch
-                    pass
-            except (AttributeError, RuntimeError):
-                pass
+        # Try CuPy backend
+        if device_type == "cuda" and cp.cuda.is_available():
+            return "cupy"
 
         # Default to Torch backend
         return "torch"
@@ -90,9 +73,14 @@ class NormalizerTemplate(StainNormalizerBase):
             if self.backend == "cuda":
                 cuda_class = self._get_torch_cuda_class()
                 self._backend_impl = cuda_class(self.device)
+            elif self.backend == "cupy":
+                cupy_class = self._get_cupy_class()
+                kwargs = self._get_backend_kwargs()
+                self._backend_impl = cupy_class(self.device, **kwargs)
             else:
                 torch_class = self._get_torch_class()
-                self._backend_impl = torch_class(self.device)
+                kwargs = self._get_backend_kwargs()
+                self._backend_impl = torch_class(self.device, **kwargs)
         return self._backend_impl
 
     def _get_torch_cuda_class(self):
@@ -102,6 +90,10 @@ class NormalizerTemplate(StainNormalizerBase):
     def _get_torch_class(self):
         """Get the Torch backend class. Override in subclasses."""
         raise NotImplementedError("Subclasses must implement _get_torch_class")
+
+    def _get_cupy_class(self):
+        """Get the CuPy backend class. Override in subclasses."""
+        raise NotImplementedError("Subclasses must implement _get_cupy_class")
 
     def fit(self, images: Any) -> "NormalizerTemplate":
         """Fit the normalizer to reference images.
@@ -147,6 +139,8 @@ class NormalizerTemplate(StainNormalizerBase):
             device_type = self.device.type
         elif isinstance(self.device, str):
             device_type = self.device
+        elif isinstance(self.device, cp.cuda.Device):
+            device_type = "cuda"
 
         # Try to use CUDA device if available
         device = self.device
@@ -154,13 +148,8 @@ class NormalizerTemplate(StainNormalizerBase):
             try:
                 from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
 
-                try:
-                    import torch
-
-                    if CUDA_AVAILABLE and torch.cuda.is_available():
-                        device = torch.device("cuda")
-                except ImportError:
-                    pass
+                if CUDA_AVAILABLE and torch.cuda.is_available():
+                    device = torch.device("cuda")
             except (ImportError, AttributeError):
                 pass
 
@@ -169,6 +158,35 @@ class NormalizerTemplate(StainNormalizerBase):
         # Allow subclasses to override this to pass extra kwargs (e.g., channel_axis)
         kwargs = self._get_backend_kwargs()
         return torch_class(device, **kwargs)
+
+    def _get_backend_for_computation_cupy(self):
+        """Get the best available CuPy backend for computation.
+
+        This method is used for fitting operations that may need a specific backend.
+        By default, uses CuPy backend for fitting.
+
+        Returns:
+            CuPy backend implementation instance.
+        """
+        # Get device type
+        device_type = None
+        if hasattr(self.device, "type"):
+            device_type = self.device.type
+        elif isinstance(self.device, str):
+            device_type = self.device
+        elif isinstance(self.device, cp.cuda.Device):
+            device_type = "cuda"
+
+        # Try to use CUDA device if available
+        device = self.device
+        if device_type == "cuda" and cp.cuda.is_available():
+            device = cp.cuda.Device(0)
+
+        # Use CuPy backend for fitting
+        cupy_class = self._get_cupy_class()
+        # Allow subclasses to override this to pass extra kwargs (e.g., channel_axis)
+        kwargs = self._get_backend_kwargs()
+        return cupy_class(device, **kwargs)
 
     def _get_backend_kwargs(self) -> dict:
         """Override in subclasses to provide extra kwargs for backend initialization."""

@@ -3,7 +3,7 @@
 #
 # This software is distributed under the terms of the GNU General Public License v3 (GPLv3).
 # See the LICENSE file for details.
-import torch
+from typing import Any
 
 from stainx.normalizers._template import NormalizerTemplate
 
@@ -24,10 +24,19 @@ class Macenko(NormalizerTemplate):
 
         return MacenkoTorch
 
-    def _compute_reference_params(self, images: torch.Tensor) -> None:
-        # Automatically use CUDA backend if available, otherwise fall back to Torch
-        backend = self._get_backend_for_computation_torch()
-        self._stain_matrix, self._target_max_conc = backend.compute_reference_stain_matrix_torch(images)
+    def _get_cupy_class(self):
+        from stainx.backends.cupy_backend import MacenkoCupy
+
+        return MacenkoCupy
+
+    def _compute_reference_params(self, images: Any) -> None:
+        # Automatically use appropriate backend based on input type
+        if self.backend == "cupy":
+            backend = self._get_backend_for_computation_cupy()
+            self._stain_matrix, self._target_max_conc = backend.compute_reference_stain_matrix_cupy(images)
+        else:
+            backend = self._get_backend_for_computation_torch()
+            self._stain_matrix, self._target_max_conc = backend.compute_reference_stain_matrix_torch(images)
         self._concentration_matrix = None
 
     def _get_reference_params(self) -> tuple:

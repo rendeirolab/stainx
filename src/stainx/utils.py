@@ -5,30 +5,13 @@
 # See the LICENSE file for details.
 from typing import Any, ClassVar
 
+import cupy as cp
 import numpy as np
-
-# Optional backend imports - only used if available
-try:
-    import torch
-
-    _TORCH_AVAILABLE = True
-except ImportError:
-    _TORCH_AVAILABLE = False
-    torch = None
-
-try:
-    import cupy as cp
-
-    _CUPY_AVAILABLE = True
-except ImportError:
-    _CUPY_AVAILABLE = False
-    cp = None
+import torch
 
 
 def _get_torch_device(device_str: str) -> Any | None:
     """Get Torch device if available."""
-    if not _TORCH_AVAILABLE:
-        return None
     try:
         return torch.device(device_str)
     except (ValueError, RuntimeError):
@@ -37,7 +20,7 @@ def _get_torch_device(device_str: str) -> Any | None:
 
 def _get_cupy_device(device_str: str) -> Any | None:
     """Get CuPy device if available."""
-    if not _CUPY_AVAILABLE or device_str != "cuda":
+    if device_str != "cuda":
         return None
     try:
         if cp.cuda.is_available():
@@ -50,11 +33,10 @@ def _get_cupy_device(device_str: str) -> Any | None:
 def _get_default_device() -> Any:
     """Get default device from available backends."""
     # Priority: CUDA (Torch) > MPS (Torch) > CUDA (CuPy) > CPU
-    if _TORCH_AVAILABLE:
-        if torch.cuda.is_available():
-            return torch.device("cuda")
-        if torch.backends.mps.is_available():
-            return torch.device("mps")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
 
     # Try CuPy CUDA
     device = _get_cupy_device("cuda")
@@ -130,9 +112,15 @@ class ChannelFormatConverter:
         return isinstance(x, np.ndarray)
 
     @staticmethod
-    def _to_numpy(x: torch.Tensor | np.ndarray) -> np.ndarray:
+    def _is_cupy_array(x: Any) -> bool:
+        return isinstance(x, cp.ndarray)
+
+    @staticmethod
+    def _to_numpy(x: torch.Tensor | np.ndarray | cp.ndarray) -> np.ndarray:
         if ChannelFormatConverter._is_torch_tensor(x):
             return x.cpu().numpy()
+        if ChannelFormatConverter._is_cupy_array(x):
+            return cp.asnumpy(x)
         return x
 
     @staticmethod
@@ -147,34 +135,43 @@ class ChannelFormatConverter:
         return x
 
     @staticmethod
-    def _squeeze(x: torch.Tensor | np.ndarray, dim: int | None = None) -> torch.Tensor | np.ndarray:
+    def _squeeze(x: torch.Tensor | np.ndarray | cp.ndarray, dim: int | None = None) -> torch.Tensor | np.ndarray | cp.ndarray:
         if dim is not None:
             if ChannelFormatConverter._is_torch_tensor(x):
                 return x.squeeze(dim)
+            if ChannelFormatConverter._is_cupy_array(x):
+                return cp.squeeze(x, axis=dim)
             return np.squeeze(x, axis=dim)
         if ChannelFormatConverter._is_torch_tensor(x):
             return x.squeeze()
+        if ChannelFormatConverter._is_cupy_array(x):
+            return cp.squeeze(x)
         return np.squeeze(x)
 
     @staticmethod
-    def _transpose(x: torch.Tensor | np.ndarray, axes: tuple) -> torch.Tensor | np.ndarray:
+    def _transpose(x: torch.Tensor | np.ndarray | cp.ndarray, axes: tuple) -> torch.Tensor | np.ndarray | cp.ndarray:
         if ChannelFormatConverter._is_torch_tensor(x):
             return x.permute(*axes)
+        if ChannelFormatConverter._is_cupy_array(x):
+            return cp.transpose(x, axes)
         return np.transpose(x, axes)
 
     @staticmethod
-    def _cpu(x: torch.Tensor | np.ndarray) -> torch.Tensor | np.ndarray:
+    def _cpu(x: torch.Tensor | np.ndarray | cp.ndarray) -> torch.Tensor | np.ndarray | cp.ndarray:
         if ChannelFormatConverter._is_torch_tensor(x):
             return x.cpu()
+        # For CuPy arrays, return as-is (they're already on GPU or can be moved)
         return x
 
     @staticmethod
-    def _float(x: torch.Tensor | np.ndarray) -> torch.Tensor | np.ndarray:
+    def _float(x: torch.Tensor | np.ndarray | cp.ndarray) -> torch.Tensor | np.ndarray | cp.ndarray:
         if ChannelFormatConverter._is_torch_tensor(x):
             return x.float()
+        if ChannelFormatConverter._is_cupy_array(x):
+            return x.astype(cp.float32)
         return x.astype(np.float32)
 
-    def to_hwc(self, images: torch.Tensor | np.ndarray, squeeze_batch: bool = False) -> np.ndarray:
+    def to_hwc(self, images: torch.Tensor | np.ndarray | cp.ndarray, squeeze_batch: bool = False) -> np.ndarray:
         images_np = self._to_numpy(images)
 
         if squeeze_batch:
@@ -184,7 +181,7 @@ class ChannelFormatConverter:
             return np.transpose(images_np, self.permute_to_hwc)
         return images_np
 
-    def prepare_for_normalizer(self, images: torch.Tensor | np.ndarray) -> torch.Tensor | np.ndarray:
+    def prepare_for_normalizer(self, images: torch.Tensor | np.ndarray | cp.ndarray) -> torch.Tensor | np.ndarray | cp.ndarray:
         if self.is_channels_first:
             # channels-first: return as-is on CPU
             return self._cpu(images)
@@ -196,9 +193,11 @@ class ChannelFormatConverter:
         # Add batch dimension back
         if self._is_torch_tensor(images):
             return images.unsqueeze(0)
+        if self._is_cupy_array(images):
+            return cp.expand_dims(images, axis=0)
         return np.expand_dims(images, axis=0)
 
-    def to_chw(self, images: torch.Tensor | np.ndarray, squeeze_batch: bool = True, return_torch: bool = True) -> torch.Tensor | np.ndarray:
+    def to_chw(self, images: torch.Tensor | np.ndarray | cp.ndarray, squeeze_batch: bool = True, return_torch: bool = True) -> torch.Tensor | np.ndarray | cp.ndarray:
         result = self._cpu(images)
         original_ndim = len(result.shape)
 
@@ -227,9 +226,12 @@ class ChannelFormatConverter:
             result = self._transpose(result, (2, 0, 1))
 
         # Ensure return type matches request
-        if return_torch and self._is_numpy_array(result):
-            return self._to_torch(result)
+        if return_torch and (self._is_numpy_array(result) or self._is_cupy_array(result)):
+            return self._to_torch(self._to_numpy(result))
         if not return_torch and self._is_torch_tensor(result):
             return self._to_numpy(result)
+        # If return_torch=False and result is CuPy array, keep as CuPy array
+        if not return_torch and self._is_cupy_array(result):
+            return result
 
         return result

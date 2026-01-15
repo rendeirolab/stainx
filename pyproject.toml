@@ -10,6 +10,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "torch>=2.0.0",
+    "cupy-cuda12x>=12.0.0; platform_machine != 'arm64'",
+    "cupy>=12.0.0; platform_machine == 'arm64'",
 ]
 authors = [
     { name = "Yimin Zheng", email = "yzheng@cemm.oeaw.ac.at"},
