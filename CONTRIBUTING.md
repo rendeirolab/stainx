@@ -2,7 +2,7 @@
 
 ## Architecture
 
-StainX uses a layered architecture with automatic backend selection:
+StainX uses a layered architecture with automatic backend selection. PyTorch and CuPy are supported as framework backends, with at least one required.
 
 ```mermaid
 ---
@@ -21,7 +21,8 @@ flowchart TB
         SNB["StainNormalizerBase"]
         ABC["abc.ABC"]
   end
- subgraph subGraph4["PyTorch Backend Implementations"]
+ subgraph subGraph2["Framework Backends (Equal Priority)"]
+  subgraph subGraph4["PyTorch Backend Implementations"]
         PTBB["PyTorchBackendBase"]
         HMPT["HistogramMatchingPyTorch"]
         REPT["ReinhardPyTorch"]
@@ -29,12 +30,25 @@ flowchart TB
         RGB2LAB["rgb_to_lab"]
         LAB2RGB["lab_to_rgb"]
   end
- subgraph subGraph5["CUDA Backend Implementations"]
+  subgraph subGraph5["PyTorch CUDA Backend Implementations"]
         CUBB["PyTorchCUDABackendBase"]
         HMCU["HistogramMatchingCUDA"]
         RECU["ReinhardCUDA"]
         MACU["MacenkoCUDA"]
   end
+  subgraph subGraph8["CuPy Backend Implementations"]
+        CPBB["CuPyBackendBase"]
+        HMCP["HistogramMatchingCuPy"]
+        RECP["ReinhardCuPy"]
+        MACP["MacenkoCuPy"]
+  end
+  subgraph subGraph9["CuPy CUDA Backend Implementations"]
+        CPUBB["CuPyCUDABackendBase"]
+        HMCPCU["HistogramMatchingCuPyCUDA"]
+        RECPCU["ReinhardCuPyCUDA"]
+        MACPCU["MacenkoCuPyCUDA"]
+  end
+ end
  subgraph subGraph6["Pure CUDA Kernels (csrc/)"]
         HM_PURE["histogram_matching.cu"]
         RE_PURE["reinhard.cu"]
@@ -46,6 +60,13 @@ flowchart TB
         RE_WRAP["reinhard.cu"]
         MA_WRAP["macenko.cu"]
         BIND["bindings.cpp"]
+  end
+ subgraph subGraph10["CuPy CUDA Extension"]
+        SCCP["stainx_cuda_cupy"]
+        HM_WRAP_CP["histogram_matching.cu"]
+        RE_WRAP_CP["reinhard.cu"]
+        MA_WRAP_CP["macenko.cu"]
+        BIND_CP["bindings.cpp"]
   end
  subgraph Utilities["Utilities"]
         UTILS["utils.py"]
@@ -59,6 +80,8 @@ flowchart TB
     MA -- inherits --> NT
     NT -- selects backend via _select_backend --> PTBB
     NT -- selects backend via _select_backend --> CUBB
+    NT -- selects backend via _select_backend --> CPBB
+    NT -- selects backend via _select_backend --> CPUBB
     HMPT -- inherits --> PTBB
     REPT -- inherits --> PTBB
     MAPT -- inherits --> PTBB
@@ -69,6 +92,15 @@ flowchart TB
     HMCU -- calls --> SC
     RECU -- calls --> SC
     MACU -- calls --> SC
+    HMCP -- inherits --> CPBB
+    RECP -- inherits --> CPBB
+    MACP -- inherits --> CPBB
+    HMCPCU -- inherits --> CPUBB
+    RECPCU -- inherits --> CPUBB
+    MACPCU -- inherits --> CPUBB
+    HMCPCU -- calls --> SCCP
+    RECPCU -- calls --> SCCP
+    MACPCU -- calls --> SCCP
     SC -- compiled from --> HM_WRAP
     SC -- compiled from --> RE_WRAP
     SC -- compiled from --> MA_WRAP
@@ -76,6 +108,13 @@ flowchart TB
     HM_WRAP -- includes kernels from --> HM_PURE
     RE_WRAP -- includes kernels from --> RE_PURE
     MA_WRAP -- includes kernels from --> MA_PURE
+    SCCP -- compiled from --> HM_WRAP_CP
+    SCCP -- compiled from --> RE_WRAP_CP
+    SCCP -- compiled from --> MA_WRAP_CP
+    SCCP -- compiled from --> BIND_CP
+    HM_WRAP_CP -- includes kernels from --> HM_PURE
+    RE_WRAP_CP -- includes kernels from --> RE_PURE
+    MA_WRAP_CP -- includes kernels from --> MA_PURE
     UTILS --> GD & CFC
     REPT -- uses --> RGB2LAB & LAB2RGB
     SNB -- uses --> GD
@@ -85,7 +124,10 @@ flowchart TB
     style SNB fill:#fff4e1
     style PTBB fill:#e8f5e9
     style CUBB fill:#fce4ec
+    style CPBB fill:#e3f2fd
+    style CPUBB fill:#fff3e0
     style SC fill:#f3e5f5
+    style SCCP fill:#e8eaf6
     style HM_PURE fill:#fff9c4
     style RE_PURE fill:#fff9c4
     style MA_PURE fill:#fff9c4
@@ -93,11 +135,17 @@ flowchart TB
 
 **Key Components:**
 - **User API**: `HistogramMatching`, `Reinhard`, `Macenko` classes
-- **Template Layer**: `NormalizerTemplate` handles backend selection
-- **Base Classes**: `StainNormalizerBase` and `NormalizerTemplate` are backend-agnostic (no hard PyTorch dependency)
-- **Backends**: PyTorch (pure Python) and CUDA (optimized kernels)
-- **Pure CUDA Kernels**: Located in `csrc/`, no dependencies, reusable by any CUDA interface
-- **PyTorch CUDA Extension**: Wrappers in `src/stainx_cuda_torch/csrc/` that include pure kernels
+- **Template Layer**: `NormalizerTemplate` handles backend selection (PyTorch, CuPy, etc.)
+- **Base Classes**: `StainNormalizerBase` and `NormalizerTemplate` are backend-agnostic (no hard framework dependency)
+- **Framework Backends**: PyTorch and CuPy (at least one required)
+  - **PyTorch**: Pure Python implementation (CPU, CUDA, MPS)
+  - **PyTorch CUDA**: Optimized CUDA kernels via PyTorch extension
+  - **CuPy**: Pure Python implementation using CuPy (CPU, CUDA)
+  - **CuPy CUDA**: Optimized CUDA kernels via CuPy extension (future)
+- **Pure CUDA Kernels**: Located in `csrc/`, no dependencies, reusable by any CUDA interface (PyTorch or CuPy)
+- **Framework Extensions**: 
+  - **PyTorch CUDA Extension**: Wrappers in `src/stainx_cuda_torch/csrc/` that include pure kernels
+  - **CuPy CUDA Extension**: Wrappers in `src/stainx_cuda_cupy/csrc/` that include pure kernels (future)
 - **Utilities**: Backend-agnostic device detection, channel format conversion
 
 ## Contributing
@@ -116,28 +164,40 @@ make fix          # Auto-fix issues
 1. **Create normalizer class** in `src/stainx/normalizers/`:
    - Inherit from `NormalizerTemplate`
    - Implement `fit()` and `transform()` methods
+   - Implement `_get_pytorch_class()` and optionally `_get_cupy_class()`, `_get_cuda_class()`, `_get_cupy_cuda_class()`
 
 2. **Implement PyTorch backend** in `src/stainx/backends/torch_backend.py`:
    - Inherit from `PyTorchBackendBase`
    - Implement algorithm in PyTorch
 
-3. **Implement CUDA backend** (optional):
-   - Add pure CUDA kernels in `csrc/` (no dependencies)
-   - Add PyTorch wrapper in `src/stainx_cuda_torch/csrc/` that includes kernels from `csrc/`
-   - Add bindings in `src/stainx_cuda_torch/csrc/bindings.cpp`
-   - Create backend class in `src/stainx/backends/torch_cuda_backend.py`
+3. **Implement CuPy backend** (optional):
+   - Create backend class in `src/stainx/backends/cupy_backend.py`
+   - Inherit from `CuPyBackendBase`
+   - Implement algorithm using CuPy
 
-4. **Add tests** in `tests/`:
+4. **Implement CUDA backend** (optional):
+   - Add pure CUDA kernels in `csrc/` (no dependencies, reusable by both PyTorch and CuPy)
+   - **For PyTorch CUDA**:
+     - Add PyTorch wrapper in `src/stainx_cuda_torch/csrc/` that includes kernels from `csrc/`
+     - Add bindings in `src/stainx_cuda_torch/csrc/bindings.cpp`
+     - Create backend class in `src/stainx/backends/torch_cuda_backend.py`
+   - **For CuPy CUDA** (future):
+     - Add CuPy wrapper in `src/stainx_cuda_cupy/csrc/` that includes kernels from `csrc/`
+     - Add bindings in `src/stainx_cuda_cupy/csrc/bindings.cpp`
+     - Create backend class in `src/stainx/backends/cupy_cuda_backend.py`
+
+5. **Add tests** in `tests/`:
    - Test correctness against reference implementation
-   - Test both PyTorch and CUDA backends
+   - Test all available backends (PyTorch, CuPy, CUDA variants)
 
-5. **Update documentation**:
+6. **Update documentation**:
    - Add usage examples
    - Update README if needed
 
 ### Adding New Backends
 
 To add a new backend (e.g., OpenCL, Metal):
+
 
 1. **Create backend base class** in `src/stainx/backends/`:
    - Inherit from a common interface or create new base class
@@ -162,7 +222,7 @@ To add a new backend (e.g., OpenCL, Metal):
 6. **Add tests**:
    - Test backend availability detection
    - Test correctness against reference implementation
-   - Ensure graceful fallback if backend unavailable
+   - Ensure backend works independently (not as fallback)
 
 **Note:** Currently, the `fit()` function executes only PyTorch routines. To improve flexibility and fully support all backends (such as CUDA), consider implementing backend-specific `fit()` logic so that fitting is performed using the selected backend, not just PyTorch. This will ensure consistency and performance across all supported backends.
 
