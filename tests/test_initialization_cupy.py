@@ -12,6 +12,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import cupy as cp
 import pytest
 
+# Skip all tests if CuPy CUDA is not available
+if not cp.cuda.is_available():
+    pytest.skip("CuPy CUDA is not available", allow_module_level=True)
+
 from stainx import HistogramMatching, Macenko, Reinhard
 from stainx.backends.cupy_backend import HistogramMatchingCupy, MacenkoCupy, ReinhardCupy
 

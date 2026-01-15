@@ -13,6 +13,10 @@ import cupy as cp
 import numpy as np
 import pytest
 
+# Skip all tests if CuPy CUDA is not available
+if not cp.cuda.is_available():
+    pytest.skip("CuPy CUDA is not available", allow_module_level=True)
+
 from stainx import HistogramMatching, Macenko, Reinhard
 from stainx.utils import ChannelFormatConverter
 

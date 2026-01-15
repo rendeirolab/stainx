@@ -8,6 +8,9 @@ import cupy as cp
 import pytest
 import torch
 
+# Check if CuPy CUDA is available and compatible
+_CUPY_CUDA_AVAILABLE = cp.cuda.is_available()
+
 
 @pytest.fixture
 def sample_images_torch():
@@ -40,24 +43,32 @@ def temp_dir(tmp_path):
 
 @pytest.fixture
 def sample_images_cupy():
+    if not _CUPY_CUDA_AVAILABLE:
+        pytest.skip("CuPy CUDA is not available")
     cp.random.seed(42)
     return (cp.random.rand(4, 3, 256, 256) * 255).round().astype(cp.uint8)
 
 
 @pytest.fixture
 def reference_images_cupy():
+    if not _CUPY_CUDA_AVAILABLE:
+        pytest.skip("CuPy CUDA is not available")
     cp.random.seed(43)
     return (cp.random.rand(2, 3, 256, 256) * 255).round().astype(cp.uint8)
 
 
 @pytest.fixture
 def single_image_cupy():
+    if not _CUPY_CUDA_AVAILABLE:
+        pytest.skip("CuPy CUDA is not available")
     cp.random.seed(44)
     return (cp.random.rand(3, 256, 256) * 255).round().astype(cp.uint8)
 
 
 @pytest.fixture
 def device_cupy():
-    if cp.cuda.is_available():
-        return cp.cuda.Device(0)
-    return cp.cuda.Device(0)  # Will raise error if CUDA not available
+    if not _CUPY_CUDA_AVAILABLE:
+        pytest.skip("CuPy CUDA is not available")
+    # Create device - if this fails due to insufficient driver, pytest will handle it
+    device = cp.cuda.Device(0)
+    return device
