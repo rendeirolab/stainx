@@ -63,7 +63,7 @@ torch.cuda.synchronize()
 time_cuda = (time.time() - start) * 1000
 
 # PyTorch backend (fallback)
-normalizer_pytorch = Reinhard(device=device, backend="pytorch")
+normalizer_torch = Reinhard(device=device, backend="torch")
 normalizer_pytorch.fit(reference)
 
 torch.cuda.synchronize()

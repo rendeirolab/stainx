@@ -6,7 +6,7 @@
 import torch
 
 
-class PyTorchBackendBase:
+class TorchBackendBase:
     def __init__(self, device: str | torch.device | None = None):
         if device is None:
             self.device = torch.device("cpu")
@@ -169,7 +169,7 @@ class PyTorchBackendBase:
         return ref_vals, ref_cdf, ref_histograms_256, reference_histogram
 
 
-class HistogramMatchingPyTorch(PyTorchBackendBase):
+class HistogramMatchingTorch(TorchBackendBase):
     def __init__(self, device: str | torch.device | None = None, channel_axis: int = 1):
         super().__init__(device)
         self.channel_axis = channel_axis
@@ -297,7 +297,7 @@ class HistogramMatchingPyTorch(PyTorchBackendBase):
         return self._restore_format_torch(matched, needs_permute)
 
 
-class ReinhardPyTorch(PyTorchBackendBase):
+class ReinhardTorch(TorchBackendBase):
     def __init__(self, device: str | torch.device | None = None):
         super().__init__(device)
 
@@ -351,7 +351,7 @@ class ReinhardPyTorch(PyTorchBackendBase):
         return self.preserve_dtype_torch(rgb_normalized, original_dtype, was_uint8_or_high_range, result_in_0_255_range=False)
 
 
-class MacenkoPyTorch(PyTorchBackendBase):
+class MacenkoTorch(TorchBackendBase):
     def __init__(self, device: str | torch.device | None = None):
         super().__init__(device)
 

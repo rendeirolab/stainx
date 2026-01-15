@@ -177,7 +177,7 @@ normalizer_cuda.fit(reference)
 normalized_cuda = normalizer_cuda.transform(images)
 
 # Force PyTorch backend (works everywhere)
-normalizer_pytorch = Reinhard(device="cuda", backend="pytorch")
+normalizer_torch = Reinhard(device="cuda", backend="torch")
 normalizer_pytorch.fit(reference)
 normalized_pytorch = normalizer_pytorch.transform(images)
 ```

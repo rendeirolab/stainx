@@ -18,16 +18,16 @@ except ImportError:
     print("DEBUG: stainx_cuda_torch package could not be imported - CUDA backend not available")
 
 
-class PyTorchCUDABackendBase:
-    """Base class for PyTorch-specific CUDA backend implementations.
+class TorchCUDABackendBase:
+    """Base class for Torch-specific CUDA backend implementations.
 
-    This class handles PyTorch tensor operations and device management for CUDA backends.
+    This class handles Torch tensor operations and device management for CUDA backends.
     For CuPy-based CUDA backends, use CupyCUDABackendBase instead.
     """
 
     def __init__(self, device: str | torch.device | None = None):
         if not CUDA_AVAILABLE:
-            raise ImportError("stainx_cuda_torch package is not installed or built. CUDA backend is not available. Use backend='pytorch' instead.")
+            raise ImportError("stainx_cuda_torch package is not installed or built. CUDA backend is not available. Use backend='torch' instead.")
 
         if device is None:
             if torch.cuda.is_available():
@@ -41,7 +41,7 @@ class PyTorchCUDABackendBase:
             raise ValueError(f"CUDA backend requires CUDA device, got {self.device.type}")
 
 
-class HistogramMatchingCUDA(PyTorchCUDABackendBase):
+class HistogramMatchingCUDA(TorchCUDABackendBase):
     def __init__(self, device: str | torch.device | None = None, channel_axis: int = 1):
         super().__init__(device)
         self.channel_axis = channel_axis
@@ -50,16 +50,16 @@ class HistogramMatchingCUDA(PyTorchCUDABackendBase):
         # Move tensors to CUDA device
         images = images.to(self.device)
 
-        # Normalize to channels-first format for processing (matching PyTorch backend logic)
-        # Match PyTorch backend's _normalize_to_channels_first method exactly
-        # IMPORTANT: Do NOT fix corrupted formats - match PyTorch's behavior exactly
-        # (even if PyTorch processes corrupted formats incorrectly)
+        # Normalize to channels-first format for processing (matching Torch backend logic)
+        # Match Torch backend's _normalize_to_channels_first method exactly
+        # IMPORTANT: Do NOT fix corrupted formats - match Torch's behavior exactly
+        # (even if Torch processes corrupted formats incorrectly)
         needs_permute = False
         if self.channel_axis == -1 or (self.channel_axis == 3 and images.ndim == 4):
             # Channels-last format (N, H, W, C) -> (N, C, H, W)
             # Trust channel_axis - assume input is in channels-last format
             # Note: This may produce wrong format if prepare_for_normalizer corrupted the input,
-            # but we match PyTorch backend's behavior exactly
+            # but we match Torch backend's behavior exactly
             images = images.permute(0, 3, 1, 2)
             needs_permute = True
 
@@ -105,7 +105,7 @@ class HistogramMatchingCUDA(PyTorchCUDABackendBase):
         # CUDA function now accepts either (256,) or (C, 256) tensor
         result = stainx_cuda_torch.histogram_matching(images, ref_hist)
 
-        # Restore to original channel format if needed (matching PyTorch backend logic)
+        # Restore to original channel format if needed (matching Torch backend logic)
         if needs_permute:
             # Convert back to channels-last (N, C, H, W) -> (N, H, W, C)
             result = result.permute(0, 2, 3, 1)
@@ -113,7 +113,7 @@ class HistogramMatchingCUDA(PyTorchCUDABackendBase):
         return result
 
 
-class ReinhardCUDA(PyTorchCUDABackendBase):
+class ReinhardCUDA(TorchCUDABackendBase):
     def transform(self, images: torch.Tensor, target_mean: torch.Tensor, target_std: torch.Tensor) -> torch.Tensor:
         images = images.to(self.device)
         target_mean = target_mean.to(self.device)
@@ -127,7 +127,7 @@ class ReinhardCUDA(PyTorchCUDABackendBase):
         return stainx_cuda_torch.reinhard(images, target_mean, target_std)
 
 
-class MacenkoCUDA(PyTorchCUDABackendBase):
+class MacenkoCUDA(TorchCUDABackendBase):
     def transform(self, images: torch.Tensor, stain_matrix: torch.Tensor, target_max_conc: torch.Tensor) -> torch.Tensor:
         images = images.to(self.device)
         stain_matrix = stain_matrix.to(self.device)

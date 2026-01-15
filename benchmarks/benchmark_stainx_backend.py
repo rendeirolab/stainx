@@ -29,29 +29,29 @@ logger = None
 def run_benchmark(method: str, reference_batch: torch.Tensor, source_batch: torch.Tensor, backend: str, warmup: int, runs: int, logger=None) -> dict[str, dict[str, Any]]:
     if method == "reinhard":
         stainx_cuda_backend = Reinhard(device="cuda", backend=backend)
-        stainx_pytorch_cuda = Reinhard(device="cuda", backend="pytorch")
+        stainx_torch_cuda = Reinhard(device="cuda", backend="torch")
     elif method == "macenko":
         stainx_cuda_backend = Macenko(device="cuda", backend=backend)
-        stainx_pytorch_cuda = Macenko(device="cuda", backend="pytorch")
+        stainx_torch_cuda = Macenko(device="cuda", backend="torch")
     elif method == "histogram_matching":
         stainx_cuda_backend = HistogramMatching(device="cuda", backend=backend)
-        stainx_pytorch_cuda = HistogramMatching(device="cuda", backend="pytorch")
+        stainx_torch_cuda = HistogramMatching(device="cuda", backend="torch")
     else:
         raise ValueError(f"Invalid method: {method}")
 
     stainx_reference = reference_batch[:1]
 
     stainx_cuda_backend.fit(stainx_reference)
-    stainx_pytorch_cuda.fit(stainx_reference)
+    stainx_torch_cuda.fit(stainx_reference)
 
     stainx_cuda_backend_result = benchmark_operation(lambda: stainx_cuda_backend.transform(source_batch), warmup, runs, "cuda", logger)
-    stainx_pytorch_cuda_result = benchmark_operation(lambda: stainx_pytorch_cuda.transform(source_batch), warmup, runs, "cuda", logger)
+    stainx_torch_cuda_result = benchmark_operation(lambda: stainx_torch_cuda.transform(source_batch), warmup, runs, "cuda", logger)
 
-    return {"cuda_backend": stainx_cuda_backend_result, "pytorch_cuda": stainx_pytorch_cuda_result}
+    return {"cuda_backend": stainx_cuda_backend_result, "torch_cuda": stainx_torch_cuda_result}
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Benchmark StainX CUDA backend against PyTorch CUDA device")
+    parser = argparse.ArgumentParser(description="Benchmark StainX CUDA backend against Torch CUDA device")
     parser.add_argument("--method", type=str, required=True, choices=["reinhard", "macenko", "histogram_matching"], help="Normalization method to benchmark (reinhard, macenko, or histogram_matching)")
     parser.add_argument("--image-size", nargs="+", type=int, default=[16, 32, 64, 128, 256, 512], help="Image sizes to test (single number per size, creates square images: size x size)")
     parser.add_argument("--channels", type=int, default=3, help="Number of channels")
@@ -97,7 +97,7 @@ def main():
     for batch_idx, batch_size in enumerate(args.batch_size):
         result_table = PrettyTable()
         result_table.title = f"{method_name} Benchmark (CUDA, batch={batch_size})"
-        result_table.field_names = ["Image Size (HxW)", "CUDA Backend (img/s)", "PyTorch CUDA (img/s)", "Speedup", "Relative Error"]
+        result_table.field_names = ["Image Size (HxW)", "CUDA Backend (img/s)", "Torch CUDA (img/s)", "Speedup", "Relative Error"]
 
         for img_idx, (height, width) in enumerate(image_sizes):
             logger.info(f"[{current_test}/{total_tests}] Testing: batch={batch_size}, size={height}x{width}")
@@ -108,22 +108,22 @@ def main():
             results = run_benchmark(args.method, reference_batch, source_batch, args.backend, args.warmup, args.runs, logger)
 
             cuda_backend_ips = batch_size * 1000 / results["cuda_backend"]["time_ms"] if results["cuda_backend"]["success"] and results["cuda_backend"]["time_ms"] > 0 else 0.0
-            pytorch_cuda_ips = batch_size * 1000 / results["pytorch_cuda"]["time_ms"] if results["pytorch_cuda"]["success"] and results["pytorch_cuda"]["time_ms"] > 0 else 0.0
+            torch_cuda_ips = batch_size * 1000 / results["torch_cuda"]["time_ms"] if results["torch_cuda"]["success"] and results["torch_cuda"]["time_ms"] > 0 else 0.0
 
-            speedup_numeric = cuda_backend_ips / pytorch_cuda_ips if pytorch_cuda_ips > 0 and pytorch_cuda_ips != float("inf") and cuda_backend_ips != float("inf") else 0.0
+            speedup_numeric = cuda_backend_ips / torch_cuda_ips if torch_cuda_ips > 0 and torch_cuda_ips != float("inf") and cuda_backend_ips != float("inf") else 0.0
             speedup_matrix[batch_idx, img_idx] = speedup_numeric
 
-            speedup = calculate_speedup(pytorch_cuda_ips, cuda_backend_ips)
+            speedup = calculate_speedup(torch_cuda_ips, cuda_backend_ips)
             logger.info(f"[{current_test}/{total_tests}] Speedup: {speedup}")
 
-            if results["cuda_backend"]["result"] is not None and results["pytorch_cuda"]["result"] is not None:
+            if results["cuda_backend"]["result"] is not None and results["torch_cuda"]["result"] is not None:
                 cuda_backend_result = results["cuda_backend"]["result"][0].cpu().float()
-                pytorch_cuda_result = results["pytorch_cuda"]["result"][0].cpu().float()
-                rel_error = calculate_relative_error(cuda_backend_result, pytorch_cuda_result, logger)
+                torch_cuda_result = results["torch_cuda"]["result"][0].cpu().float()
+                rel_error = calculate_relative_error(cuda_backend_result, torch_cuda_result, logger)
             else:
                 rel_error = float("inf")
 
-            result_table.add_row([f"{height}x{width}", f"{cuda_backend_ips:.0f}" if results["cuda_backend"]["success"] else "ERROR", f"{pytorch_cuda_ips:.0f}" if results["pytorch_cuda"]["success"] else "ERROR", speedup, f"{rel_error:.6f}" if rel_error != float("inf") else "N/A"])
+            result_table.add_row([f"{height}x{width}", f"{cuda_backend_ips:.0f}" if results["cuda_backend"]["success"] else "ERROR", f"{torch_cuda_ips:.0f}" if results["torch_cuda"]["success"] else "ERROR", speedup, f"{rel_error:.6f}" if rel_error != float("inf") else "N/A"])
             current_test += 1
 
         result_tables.append(result_table)
@@ -137,8 +137,8 @@ def main():
 
     if args.plot_path:
         logger.info("Generating 3D speedup plot...")
-        plot_3d_bars(z=speedup_matrix, x=np.array(args.image_size), y=np.array(args.batch_size), xlabel="Image Size (HxW)", ylabel="Batch Size", zlabel="Speedup (CUDA Backend / PyTorch CUDA)", label_fontsize=12, save_path=f"speedup_cuda_backend_vs_pytorch_plot_{method_name}_cuda_{current_time}.pdf", show=False)
-        logger.info(f"3D plot saved to: speedup_cuda_backend_vs_pytorch_plot_{method_name}_cuda_{current_time}.pdf")
+        plot_3d_bars(z=speedup_matrix, x=np.array(args.image_size), y=np.array(args.batch_size), xlabel="Image Size (HxW)", ylabel="Batch Size", zlabel="Speedup (CUDA Backend / Torch CUDA)", label_fontsize=12, save_path=f"speedup_cuda_backend_vs_torch_plot_{method_name}_cuda_{current_time}.pdf", show=False)
+        logger.info(f"3D plot saved to: speedup_cuda_backend_vs_torch_plot_{method_name}_cuda_{current_time}.pdf")
 
     logger.info("Benchmark complete!")
 

@@ -90,7 +90,7 @@ Backends are automatically selected based on device availability:
 You can explicitly specify a backend:
 
 ```python
-normalizer = Reinhard(device="cuda", backend="pytorch")  # Force PyTorch backend
+normalizer = Reinhard(device="cuda", backend="torch")  # Force Torch backend
 ```
 
 ## Requirements

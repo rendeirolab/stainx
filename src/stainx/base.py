@@ -12,8 +12,8 @@ from stainx.utils import get_device
 class StainNormalizerBase(ABC):
     """Base class for stain normalizers.
 
-    This class is backend-agnostic and does not depend on PyTorch.
-    PyTorch support is optional and can be enabled by subclasses.
+    This class is backend-agnostic and does not depend on Torch.
+    Torch support is optional and can be enabled by subclasses.
     """
 
     def __init__(self, device: str | Any | None = None):

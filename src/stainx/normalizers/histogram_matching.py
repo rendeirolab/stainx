@@ -24,10 +24,10 @@ class HistogramMatching(NormalizerTemplate):
 
         return HistogramMatchingCUDA
 
-    def _get_pytorch_class(self):
-        from stainx.backends.torch_backend import HistogramMatchingPyTorch
+    def _get_torch_class(self):
+        from stainx.backends.torch_backend import HistogramMatchingTorch
 
-        return HistogramMatchingPyTorch
+        return HistogramMatchingTorch
 
     def _get_backend_impl(self):
         if self._backend_impl is None:
@@ -35,8 +35,8 @@ class HistogramMatching(NormalizerTemplate):
                 cuda_class = self._get_torch_cuda_class()
                 self._backend_impl = cuda_class(self.device, channel_axis=self.channel_axis)
             else:
-                pytorch_class = self._get_pytorch_class()
-                self._backend_impl = pytorch_class(self.device, channel_axis=self.channel_axis)
+                torch_class = self._get_torch_class()
+                self._backend_impl = torch_class(self.device, channel_axis=self.channel_axis)
         return self._backend_impl
 
     def _get_backend_kwargs(self) -> dict:
@@ -44,7 +44,7 @@ class HistogramMatching(NormalizerTemplate):
         return {"channel_axis": self.channel_axis}
 
     def _compute_reference_params(self, images: torch.Tensor) -> None:
-        # Automatically use CUDA backend if available, otherwise fall back to PyTorch
+        # Automatically use CUDA backend if available, otherwise fall back to Torch
         backend = self._get_backend_for_computation_torch()
         (self._ref_vals, self._ref_cdf, self._ref_histograms_256, self._reference_histogram) = backend.compute_reference_histograms_torch(images)
 

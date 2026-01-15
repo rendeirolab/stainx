@@ -26,7 +26,7 @@ except ImportError:
 
 
 def _get_torch_device(device_str: str) -> Any | None:
-    """Get PyTorch device if available."""
+    """Get Torch device if available."""
     if not _TORCH_AVAILABLE:
         return None
     try:
@@ -49,7 +49,7 @@ def _get_cupy_device(device_str: str) -> Any | None:
 
 def _get_default_device() -> Any:
     """Get default device from available backends."""
-    # Priority: CUDA (PyTorch) > MPS (PyTorch) > CUDA (CuPy) > CPU
+    # Priority: CUDA (Torch) > MPS (Torch) > CUDA (CuPy) > CPU
     if _TORCH_AVAILABLE:
         if torch.cuda.is_available():
             return torch.device("cuda")
@@ -69,7 +69,7 @@ def get_device(device: str | Any | None) -> Any:
     """Get device object from any backend.
 
     This function is backend-agnostic and supports:
-    - PyTorch devices (if PyTorch is available)
+    - Torch devices (if Torch is available)
     - CuPy devices (if CuPy is available)
     - String device specifications ("cpu", "cuda", etc.)
 
@@ -88,7 +88,7 @@ def get_device(device: str | Any | None) -> Any:
         return device
 
     # Try to create device from string
-    # Priority: PyTorch > CuPy > string fallback
+    # Priority: Torch > CuPy > string fallback
     device_obj = _get_torch_device(device)
     if device_obj is not None:
         return device_obj

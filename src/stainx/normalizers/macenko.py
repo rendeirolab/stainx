@@ -19,13 +19,13 @@ class Macenko(NormalizerTemplate):
 
         return MacenkoCUDA
 
-    def _get_pytorch_class(self):
-        from stainx.backends.torch_backend import MacenkoPyTorch
+    def _get_torch_class(self):
+        from stainx.backends.torch_backend import MacenkoTorch
 
-        return MacenkoPyTorch
+        return MacenkoTorch
 
     def _compute_reference_params(self, images: torch.Tensor) -> None:
-        # Automatically use CUDA backend if available, otherwise fall back to PyTorch
+        # Automatically use CUDA backend if available, otherwise fall back to Torch
         backend = self._get_backend_for_computation_torch()
         self._stain_matrix, self._target_max_conc = backend.compute_reference_stain_matrix_torch(images)
         self._concentration_matrix = None

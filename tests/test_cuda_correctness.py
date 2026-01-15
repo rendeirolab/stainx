@@ -45,13 +45,13 @@ class TestCUDABackendComparisonTorch:
         torch.manual_seed(123)
         return (torch.rand(1, 3, 256, 256, device=cuda_device) * 255).round().to(torch.uint8)
 
-    def test_reinhard_cuda_vs_pytorch(self, reference_image, source_image_torch, cuda_device):
-        """Test CUDA backend vs PyTorch backend for Reinhard normalization."""
-        # PyTorch backend
-        normalizer_pytorch = Reinhard(device=cuda_device, backend="pytorch")
-        normalizer_pytorch.fit(reference_image)
-        result_pytorch = normalizer_pytorch.transform(source_image_torch)
-        result_pytorch_cpu = result_pytorch.squeeze(0).cpu().float()
+    def test_reinhard_cuda_vs_torch(self, reference_image, source_image_torch, cuda_device):
+        """Test CUDA backend vs Torch backend for Reinhard normalization."""
+        # Torch backend
+        normalizer_torch = Reinhard(device=cuda_device, backend="torch")
+        normalizer_torch.fit(reference_image)
+        result_torch = normalizer_torch.transform(source_image_torch)
+        result_torch_cpu = result_torch.squeeze(0).cpu().float()
 
         # CUDA backend
         try:
@@ -60,21 +60,21 @@ class TestCUDABackendComparisonTorch:
             result_cuda = normalizer_cuda.transform(source_image_torch)
             result_cuda_cpu = result_cuda.squeeze(0).cpu().float()
 
-            rel_abs_error = compute_relative_absolute_error_torch(result_cuda_cpu, result_pytorch_cpu)
+            rel_abs_error = compute_relative_absolute_error_torch(result_cuda_cpu, result_torch_cpu)
 
-            assert rel_abs_error < 0.01, f"CUDA vs PyTorch Reinhard relative absolute error too large: {rel_abs_error:.6f}, expected <0.01"
+            assert rel_abs_error < 0.01, f"CUDA vs Torch Reinhard relative absolute error too large: {rel_abs_error:.6f}, expected <0.01"
         except (ImportError, NotImplementedError) as e:
-            # CUDA extension not available, but CUDA is detected (via PyTorch)
+            # CUDA extension not available, but CUDA is detected (via Torch)
             # This is a failure - if CUDA is available, the CUDA extension should be built
             pytest.fail(f"CUDA is detected but CUDA extension is not available: {e}")
 
-    def test_macenko_cuda_vs_pytorch(self, reference_image, source_image_torch, cuda_device):
-        """Test CUDA backend vs PyTorch backend for Macenko normalization."""
-        # PyTorch backend
-        normalizer_pytorch = Macenko(device=cuda_device, backend="pytorch")
-        normalizer_pytorch.fit(reference_image)
-        result_pytorch = normalizer_pytorch.transform(source_image_torch)
-        result_pytorch_cpu = result_pytorch.squeeze(0).cpu().float()
+    def test_macenko_cuda_vs_torch(self, reference_image, source_image_torch, cuda_device):
+        """Test CUDA backend vs Torch backend for Macenko normalization."""
+        # Torch backend
+        normalizer_torch = Macenko(device=cuda_device, backend="torch")
+        normalizer_torch.fit(reference_image)
+        result_torch = normalizer_torch.transform(source_image_torch)
+        result_torch_cpu = result_torch.squeeze(0).cpu().float()
 
         # CUDA backend
         try:
@@ -83,17 +83,17 @@ class TestCUDABackendComparisonTorch:
             result_cuda = normalizer_cuda.transform(source_image_torch)
             result_cuda_cpu = result_cuda.squeeze(0).cpu().float()
 
-            rel_abs_error = compute_relative_absolute_error_torch(result_cuda_cpu, result_pytorch_cpu)
+            rel_abs_error = compute_relative_absolute_error_torch(result_cuda_cpu, result_torch_cpu)
 
-            assert rel_abs_error < 0.01, f"CUDA vs PyTorch Macenko relative absolute error too large: {rel_abs_error:.6f}, expected <0.01"
+            assert rel_abs_error < 0.01, f"CUDA vs Torch Macenko relative absolute error too large: {rel_abs_error:.6f}, expected <0.01"
         except (ImportError, NotImplementedError) as e:
-            # CUDA extension not available, but CUDA is detected (via PyTorch)
+            # CUDA extension not available, but CUDA is detected (via Torch)
             # This is a failure - if CUDA is available, the CUDA extension should be built
             pytest.fail(f"CUDA is detected but CUDA extension is not available: {e}")
 
     @pytest.mark.parametrize("channel_axis", [1, -1, 3, -3])
-    def test_histogram_matching_cuda_vs_pytorch(self, reference_image, source_image_torch, cuda_device, channel_axis):
-        """Test CUDA backend vs PyTorch backend for histogram matching."""
+    def test_histogram_matching_cuda_vs_torch(self, reference_image, source_image_torch, cuda_device, channel_axis):
+        """Test CUDA backend vs Torch backend for histogram matching."""
         # Create converter
         converter = ChannelFormatConverter(channel_axis=channel_axis)
 
@@ -101,11 +101,11 @@ class TestCUDABackendComparisonTorch:
         ref_input = converter.prepare_for_normalizer(reference_image)
         src_input = converter.prepare_for_normalizer(source_image_torch)
 
-        # PyTorch backend
-        normalizer_pytorch = HistogramMatching(device=cuda_device, backend="pytorch", channel_axis=channel_axis)
-        normalizer_pytorch.fit(ref_input)
-        result_pytorch = normalizer_pytorch.transform(src_input)
-        result_pytorch_chw = converter.to_chw(result_pytorch, squeeze_batch=True)
+        # Torch backend
+        normalizer_torch = HistogramMatching(device=cuda_device, backend="torch", channel_axis=channel_axis)
+        normalizer_torch.fit(ref_input)
+        result_torch = normalizer_torch.transform(src_input)
+        result_torch_chw = converter.to_chw(result_torch, squeeze_batch=True)
 
         # CUDA backend
         try:
@@ -114,11 +114,11 @@ class TestCUDABackendComparisonTorch:
             result_cuda = normalizer_cuda.transform(src_input)
             result_cuda_chw = converter.to_chw(result_cuda, squeeze_batch=True)
 
-            rel_abs_error = compute_relative_absolute_error_torch(result_cuda_chw, result_pytorch_chw)
+            rel_abs_error = compute_relative_absolute_error_torch(result_cuda_chw, result_torch_chw)
 
-            assert rel_abs_error < 0.01, f"CUDA vs PyTorch histogram matching relative absolute error too large: {rel_abs_error:.6f}, expected <0.01 (channel_axis={channel_axis})"
+            assert rel_abs_error < 0.01, f"CUDA vs Torch histogram matching relative absolute error too large: {rel_abs_error:.6f}, expected <0.01 (channel_axis={channel_axis})"
         except (ImportError, NotImplementedError) as e:
-            # CUDA extension not available, but CUDA is detected (via PyTorch)
+            # CUDA extension not available, but CUDA is detected (via Torch)
             # This is a failure - if CUDA is available, the CUDA extension should be built
             pytest.fail(f"CUDA is detected but CUDA extension is not available: {e}")
 

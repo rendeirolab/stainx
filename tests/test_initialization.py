@@ -13,7 +13,7 @@ import pytest
 import torch
 
 from stainx import HistogramMatching, Macenko, Reinhard
-from stainx.backends.torch_backend import HistogramMatchingPyTorch, MacenkoPyTorch, ReinhardPyTorch
+from stainx.backends.torch_backend import HistogramMatchingTorch, MacenkoTorch, ReinhardTorch
 
 
 class TestStainNormalizersTorch:
@@ -22,7 +22,7 @@ class TestStainNormalizersTorch:
         normalizer = normalizer_class(device=device_torch)
 
         assert normalizer.device == device_torch
-        assert normalizer.backend in ["cuda", "pytorch"]
+        assert normalizer.backend in ["cuda", "torch"]
         assert not normalizer._is_fitted
 
     @pytest.mark.parametrize("normalizer_class", [HistogramMatching, Reinhard, Macenko])
@@ -61,7 +61,7 @@ class TestStainNormalizersTorch:
 
 
 class TestBackendImplementationsTorch:
-    @pytest.mark.parametrize(("backend_class", "args"), [(HistogramMatchingPyTorch, (torch.rand(4, 3, 16, 16), torch.rand(16))), (ReinhardPyTorch, (torch.rand(4, 3, 16, 16), torch.rand(3), torch.rand(3))), (MacenkoPyTorch, (torch.rand(4, 3, 16, 16), torch.rand(3, 2), torch.rand(2)))])
+    @pytest.mark.parametrize(("backend_class", "args"), [(HistogramMatchingTorch, (torch.rand(4, 3, 16, 16), torch.rand(16))), (ReinhardTorch, (torch.rand(4, 3, 16, 16), torch.rand(3), torch.rand(3))), (MacenkoTorch, (torch.rand(4, 3, 16, 16), torch.rand(3, 2), torch.rand(2)))])
     def test_backend_transform(self, backend_class, args, device_torch):
         backend = backend_class(device=device_torch)
         images = args[0]

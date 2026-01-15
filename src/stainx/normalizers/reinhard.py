@@ -18,13 +18,13 @@ class Reinhard(NormalizerTemplate):
 
         return ReinhardCUDA
 
-    def _get_pytorch_class(self):
-        from stainx.backends.torch_backend import ReinhardPyTorch
+    def _get_torch_class(self):
+        from stainx.backends.torch_backend import ReinhardTorch
 
-        return ReinhardPyTorch
+        return ReinhardTorch
 
     def _compute_reference_params(self, images: torch.Tensor) -> None:
-        # Automatically use CUDA backend if available, otherwise fall back to PyTorch
+        # Automatically use CUDA backend if available, otherwise fall back to Torch
         backend = self._get_backend_for_computation_torch()
         self._reference_mean, self._reference_std = backend.compute_reference_mean_std_torch(images)
 

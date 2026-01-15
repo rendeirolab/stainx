@@ -2,7 +2,7 @@
 
 ## Architecture
 
-StainX uses a layered architecture with automatic backend selection. PyTorch and CuPy are supported as framework backends, with at least one required.
+StainX uses a layered architecture with automatic backend selection. Torch and CuPy are supported as framework backends, with at least one required.
 
 ```mermaid
 ---
@@ -22,16 +22,16 @@ flowchart TB
         ABC["abc.ABC"]
   end
  subgraph subGraph2["Framework Backends (Equal Priority)"]
-  subgraph subGraph4["PyTorch Backend Implementations"]
-        PTBB["PyTorchBackendBase"]
-        HMPT["HistogramMatchingPyTorch"]
-        REPT["ReinhardPyTorch"]
-        MAPT["MacenkoPyTorch"]
+  subgraph subGraph4["Torch Backend Implementations"]
+        PTBB["TorchBackendBase"]
+        HMPT["HistogramMatchingTorch"]
+        REPT["ReinhardTorch"]
+        MAPT["MacenkoTorch"]
         RGB2LAB["rgb_to_lab_torch"]
         LAB2RGB["lab_to_rgb_torch"]
   end
-  subgraph subGraph5["PyTorch CUDA Backend Implementations"]
-        CUBB["PyTorchCUDABackendBase"]
+  subgraph subGraph5["Torch CUDA Backend Implementations"]
+        CUBB["TorchCUDABackendBase"]
         HMCU["HistogramMatchingCUDA"]
         RECU["ReinhardCUDA"]
         MACU["MacenkoCUDA"]
@@ -54,7 +54,7 @@ flowchart TB
         RE_PURE["reinhard.cu"]
         MA_PURE["macenko.cu"]
   end
- subgraph subGraph7["PyTorch CUDA Extension"]
+ subgraph subGraph7["Torch CUDA Extension"]
         SC["stainx_cuda_torch"]
         HM_WRAP["histogram_matching.cu"]
         RE_WRAP["reinhard.cu"]
@@ -135,16 +135,16 @@ flowchart TB
 
 **Key Components:**
 - **User API**: `HistogramMatching`, `Reinhard`, `Macenko` classes
-- **Template Layer**: `NormalizerTemplate` handles backend selection (PyTorch, CuPy, etc.)
+- **Template Layer**: `NormalizerTemplate` handles backend selection (Torch, CuPy, etc.)
 - **Base Classes**: `StainNormalizerBase` and `NormalizerTemplate` are backend-agnostic (no hard framework dependency)
-- **Framework Backends**: PyTorch and CuPy (at least one required)
-  - **PyTorch**: Pure Python implementation (CPU, CUDA, MPS)
-  - **PyTorch CUDA**: Optimized CUDA kernels via PyTorch extension
+- **Framework Backends**: Torch and CuPy (at least one required)
+  - **Torch**: Pure Python implementation (CPU, CUDA, MPS)
+  - **Torch CUDA**: Optimized CUDA kernels via Torch extension
   - **CuPy**: Pure Python implementation using CuPy (CPU, CUDA)
   - **CuPy CUDA**: Optimized CUDA kernels via CuPy extension (future)
-- **Pure CUDA Kernels**: Located in `csrc/`, no dependencies, reusable by any CUDA interface (PyTorch or CuPy)
+- **Pure CUDA Kernels**: Located in `csrc/`, no dependencies, reusable by any CUDA interface (Torch or CuPy)
 - **Framework Extensions**: 
-  - **PyTorch CUDA Extension**: Wrappers in `src/stainx_cuda_torch/csrc/` that include pure kernels
+  - **Torch CUDA Extension**: Wrappers in `src/stainx_cuda_torch/csrc/` that include pure kernels
   - **CuPy CUDA Extension**: Wrappers in `src/stainx_cuda_cupy/csrc/` that include pure kernels (future)
 - **Utilities**: Backend-agnostic device detection, channel format conversion
 
@@ -164,11 +164,11 @@ make fix          # Auto-fix issues
 1. **Create normalizer class** in `src/stainx/normalizers/`:
    - Inherit from `NormalizerTemplate`
    - Implement `fit()` and `transform()` methods
-   - Implement `_get_pytorch_class()` and optionally `_get_cupy_class()`, `_get_torch_cuda_class()`, `_get_cupy_cuda_class()`
+   - Implement `_get_torch_class()` and optionally `_get_cupy_class()`, `_get_torch_cuda_class()`, `_get_cupy_cuda_class()`
 
-2. **Implement PyTorch backend** in `src/stainx/backends/torch_backend.py`:
-   - Inherit from `PyTorchBackendBase`
-   - Implement algorithm in PyTorch
+2. **Implement Torch backend** in `src/stainx/backends/torch_backend.py`:
+   - Inherit from `TorchBackendBase`
+   - Implement algorithm in Torch
 
 3. **Implement CuPy backend** (optional):
    - Create backend class in `src/stainx/backends/cupy_backend.py`
@@ -176,9 +176,9 @@ make fix          # Auto-fix issues
    - Implement algorithm using CuPy
 
 4. **Implement CUDA backend** (optional):
-   - Add pure CUDA kernels in `csrc/` (no dependencies, reusable by both PyTorch and CuPy)
-   - **For PyTorch CUDA**:
-     - Add PyTorch wrapper in `src/stainx_cuda_torch/csrc/` that includes kernels from `csrc/`
+   - Add pure CUDA kernels in `csrc/` (no dependencies, reusable by both Torch and CuPy)
+   - **For Torch CUDA**:
+     - Add Torch wrapper in `src/stainx_cuda_torch/csrc/` that includes kernels from `csrc/`
      - Add bindings in `src/stainx_cuda_torch/csrc/bindings.cpp`
      - Create backend class in `src/stainx/backends/torch_cuda_backend.py`
    - **For CuPy CUDA** (future):
@@ -188,7 +188,7 @@ make fix          # Auto-fix issues
 
 5. **Add tests** in `tests/`:
    - Test correctness against reference implementation
-   - Test all available backends (PyTorch, CuPy, CUDA variants)
+   - Test all available backends (Torch, CuPy, CUDA variants)
 
 6. **Update documentation**:
    - Add usage examples
@@ -224,7 +224,7 @@ To add a new backend (e.g., OpenCL, Metal):
    - Test correctness against reference implementation
    - Ensure backend works independently (not as fallback)
 
-**Note:** Currently, the `fit()` function executes only PyTorch routines. To improve flexibility and fully support all backends (such as CUDA), consider implementing backend-specific `fit()` logic so that fitting is performed using the selected backend, not just PyTorch. This will ensure consistency and performance across all supported backends.
+**Note:** Currently, the `fit()` function executes only Torch routines. To improve flexibility and fully support all backends (such as CUDA), consider implementing backend-specific `fit()` logic so that fitting is performed using the selected backend, not just Torch. This will ensure consistency and performance across all supported backends.
 
 ### Code Style
 

@@ -76,7 +76,7 @@ StainX automatically selects the best backend, but you can force a specific one:
 normalizer = Reinhard(device="cuda")
 
 # Force PyTorch backend (works on CPU, CUDA, and MPS)
-normalizer = Reinhard(device="cuda", backend="pytorch")
+normalizer = Reinhard(device="cuda", backend="torch")
 
 # Force CUDA backend (only works on CUDA devices)
 normalizer = Reinhard(device="cuda", backend="cuda")
