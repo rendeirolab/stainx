@@ -12,7 +12,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import cupy as cp
 import pytest
 
-
 from stainx import HistogramMatching, Macenko, Reinhard
 from stainx.backends.cupy_backend import HistogramMatchingCupy, MacenkoCupy, ReinhardCupy
 

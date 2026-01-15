@@ -13,7 +13,6 @@ import cupy as cp
 import numpy as np
 import pytest
 
-
 from stainx import HistogramMatching, Macenko, Reinhard
 from stainx.utils import ChannelFormatConverter
 

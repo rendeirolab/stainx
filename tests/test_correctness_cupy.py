@@ -16,7 +16,6 @@ import torch
 from skimage.exposure import match_histograms
 from torchstain.torch.normalizers import TorchMacenkoNormalizer, TorchReinhardNormalizer
 
-
 from stainx import HistogramMatching, Macenko, Reinhard
 from stainx.utils import ChannelFormatConverter
 

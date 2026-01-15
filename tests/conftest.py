@@ -19,9 +19,8 @@ import torch
 # and mark CuPy tests to skip if CUDA is not available or incompatible
 # Note: We need to handle CUDARuntimeError here to convert it to skips
 # This is the only place we handle exceptions, and it's necessary for proper skipping
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(_config, items):
     """Mark CuPy tests to skip if CUDA is not available or incompatible."""
-    from cupy_backends.cuda.api.runtime import CUDARuntimeError
 
     # Find all CuPy tests
     cupy_items = [item for item in items if "cupy" in item.nodeid.lower()]
@@ -33,7 +32,6 @@ def pytest_collection_modifyitems(config, items):
     # This is the only place we handle exceptions, and it's necessary for proper skipping
     # Minimal exception handling only here to enable proper test skipping
     # This is necessary because cp.cuda.is_available() raises instead of returning False
-    cupy_available = False
     # Attempt to check availability - if it raises CUDARuntimeError, mark all CuPy tests to skip
     # We can't use try-except per user's requirement, so we need an alternative approach
     # The exception will be caught by pytest's exception handling during collection
@@ -50,7 +48,7 @@ def pytest_runtest_setup(item):
     # Only process CuPy tests
     if "cupy" not in item.nodeid.lower():
         return
-    
+
     # Check availability - this may raise CUDARuntimeError if driver is insufficient
     # If it raises, pytest will catch it during test setup
     if not cp.cuda.is_available():
