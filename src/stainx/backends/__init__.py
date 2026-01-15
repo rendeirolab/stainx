@@ -3,7 +3,7 @@
 #
 # This software is distributed under the terms of the GNU General Public License v3 (GPLv3).
 # See the LICENSE file for details.
-from stainx.backends.torch_backend import HistogramMatchingTorch, MacenkoTorch, TorchBackendBase, ReinhardTorch
-from stainx.backends.torch_cuda_backend import HistogramMatchingCUDA, MacenkoCUDA, TorchCUDABackendBase, ReinhardCUDA
+from stainx.backends.torch_backend import HistogramMatchingTorch, MacenkoTorch, ReinhardTorch, TorchBackendBase
+from stainx.backends.torch_cuda_backend import HistogramMatchingCUDA, MacenkoCUDA, ReinhardCUDA, TorchCUDABackendBase
 
-__all__ = ["HistogramMatchingCUDA", "HistogramMatchingTorch", "MacenkoCUDA", "MacenkoTorch", "TorchBackendBase", "TorchCUDABackendBase", "ReinhardCUDA", "ReinhardTorch"]
+__all__ = ["HistogramMatchingCUDA", "HistogramMatchingTorch", "MacenkoCUDA", "MacenkoTorch", "ReinhardCUDA", "ReinhardTorch", "TorchBackendBase", "TorchCUDABackendBase"]
