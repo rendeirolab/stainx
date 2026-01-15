@@ -60,8 +60,10 @@ class TestStainNormalizersCupy:
 
 
 class TestBackendImplementationsCupy:
-    @pytest.mark.parametrize(("backend_class", "args"), [(HistogramMatchingCupy, (cp.random.rand(4, 3, 16, 16), cp.random.rand(16))), (ReinhardCupy, (cp.random.rand(4, 3, 16, 16), cp.random.rand(3), cp.random.rand(3))), (MacenkoCupy, (cp.random.rand(4, 3, 16, 16), cp.random.rand(3, 2), cp.random.rand(2)))])
-    def test_backend_transform(self, backend_class, args, device_cupy):
+    @pytest.mark.parametrize(("backend_class", "shapes"), [(HistogramMatchingCupy, [(4, 3, 16, 16), (16,)]), (ReinhardCupy, [(4, 3, 16, 16), (3,), (3,)]), (MacenkoCupy, [(4, 3, 16, 16), (3, 2), (2,)])])
+    def test_backend_transform(self, backend_class, shapes, device_cupy):
+        # Create arrays inside the test to avoid CUDA access during collection
+        args = tuple(cp.random.rand(*shape) for shape in shapes)
         backend = backend_class(device=device_cupy)
         images = args[0]
 
