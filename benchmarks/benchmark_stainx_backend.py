@@ -132,7 +132,7 @@ def main():
     for batch_idx, batch_size in enumerate(args.batch_size):
         result_table = PrettyTable()
         result_table.title = f"{method_name} Benchmark (CUDA, batch={batch_size})"
-        result_table.field_names = ["Image Size (HxW)", f"{args.backend1} (img/s)", f"{args.backend2} (img/s)", "Speedup", "Relative Error"]
+        result_table.field_names = ["Image Size (HxW)", f"1. {args.backend1.upper()} (img/s)", f"2. {args.backend2.upper()} (img/s)", "Speedup", "Relative Error"]
 
         for img_idx, (height, width) in enumerate(image_sizes):
             logger.info(f"[{current_test}/{total_tests}] Testing: batch={batch_size}, size={height}x{width}")
