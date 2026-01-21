@@ -33,7 +33,7 @@ def compute_relative_absolute_error_torch(x: torch.Tensor, y: torch.Tensor) -> f
     return rel_abs_error.item()
 
 
-@pytest.mark.cuda
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 class TestCUDABackendComparisonTorch:
     @pytest.fixture
     def cuda_device(self):

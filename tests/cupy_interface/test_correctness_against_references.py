@@ -42,6 +42,15 @@ def compute_relative_absolute_error_cupy(x: cp.ndarray, y: cp.ndarray) -> float:
     return float(rel_abs_error)
 
 
+def _cupy_cuda_available():
+    """Safely check if CuPy CUDA is available."""
+    try:
+        return cp.cuda.is_available()
+    except Exception:
+        return False
+
+
+@pytest.mark.skipif(not _cupy_cuda_available(), reason="CUDA is not available")
 class TestTorchstainComparisonCupy:
     @pytest.fixture
     def reference_image(self, device_cupy):
