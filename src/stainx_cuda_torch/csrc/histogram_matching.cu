@@ -117,7 +117,7 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
     // Choose blocks per channel based on workload (kernel uses pixels_per_block=4096).
     // Cap to avoid excessive temporary memory for very large images.
     const int pixels_per_block = 4096;
-    int blocks_per_channel = (total_pixels_per_channel + pixels_per_block - 1) / pixels_per_block;
+    int blocks_per_channel     = (total_pixels_per_channel + pixels_per_block - 1) / pixels_per_block;
     if (blocks_per_channel < 1) blocks_per_channel = 1;
     if (blocks_per_channel > 2048) blocks_per_channel = 2048;
 
@@ -133,22 +133,13 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
 
     // 1) Partial histograms (many blocks per channel)
     dim3 grid_partial(blocks_per_channel, C, 1);
-    hm_partial_hist_kernel<<<grid_partial, num_threads, 0, stream>>>(images_uint8.data_ptr<uint8_t>(),
-                                                                     reinterpret_cast<uint32_t*>(partial_hist.data_ptr<int32_t>()),
-                                                                     N,
-                                                                     C,
-                                                                     H,
-                                                                     W,
-                                                                     blocks_per_channel);
+    hm_partial_hist_kernel<<<grid_partial, num_threads, 0, stream>>>(images_uint8.data_ptr<uint8_t>(), reinterpret_cast<uint32_t*>(partial_hist.data_ptr<int32_t>()), N, C, H, W, blocks_per_channel);
     err = cudaGetLastError();
     if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in hm_partial_hist_kernel: ", cudaGetErrorString(err)); }
 
     // 2) Reduce partials -> final histogram per channel
     dim3 grid_reduce(1, C, 1);
-    hm_reduce_hist_kernel<<<grid_reduce, num_threads, 0, stream>>>(reinterpret_cast<const uint32_t*>(partial_hist.data_ptr<int32_t>()),
-                                                                   reinterpret_cast<uint32_t*>(hist_u32.data_ptr<int32_t>()),
-                                                                   C,
-                                                                   blocks_per_channel);
+    hm_reduce_hist_kernel<<<grid_reduce, num_threads, 0, stream>>>(reinterpret_cast<const uint32_t*>(partial_hist.data_ptr<int32_t>()), reinterpret_cast<uint32_t*>(hist_u32.data_ptr<int32_t>()), C, blocks_per_channel);
     err = cudaGetLastError();
     if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in hm_reduce_hist_kernel: ", cudaGetErrorString(err)); }
 
@@ -158,25 +149,14 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
     if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in hm_ref_cdf_kernel: ", cudaGetErrorString(err)); }
 
     // 4) Build LUT per channel from source hist + reference CDF
-    hm_build_lut_kernel<<<C, num_threads, 0, stream>>>(reinterpret_cast<const uint32_t*>(hist_u32.data_ptr<int32_t>()),
-                                                       ref_cdf.data_ptr<float>(),
-                                                       lut.data_ptr<float>(),
-                                                       N,
-                                                       H,
-                                                       W);
+    hm_build_lut_kernel<<<C, num_threads, 0, stream>>>(reinterpret_cast<const uint32_t*>(hist_u32.data_ptr<int32_t>()), ref_cdf.data_ptr<float>(), lut.data_ptr<float>(), N, H, W);
     err = cudaGetLastError();
     if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in hm_build_lut_kernel: ", cudaGetErrorString(err)); }
 
     // 5) Apply LUT across all pixels
     int total_pixels = N * C * H * W;
     int num_blocks   = (total_pixels + num_threads - 1) / num_threads;
-    hm_apply_lut_kernel<<<num_blocks, num_threads, 0, stream>>>(images_uint8.data_ptr<uint8_t>(),
-                                                                output.data_ptr<float>(),
-                                                                lut.data_ptr<float>(),
-                                                                N,
-                                                                C,
-                                                                H,
-                                                                W);
+    hm_apply_lut_kernel<<<num_blocks, num_threads, 0, stream>>>(images_uint8.data_ptr<uint8_t>(), output.data_ptr<float>(), lut.data_ptr<float>(), N, C, H, W);
     err = cudaGetLastError();
     if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in hm_apply_lut_kernel: ", cudaGetErrorString(err)); }
 
