@@ -1,5 +1,13 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel", "torch>=2.0.0", "ninja"]
+requires = [
+    "setuptools>=61.0",
+    "wheel",
+    "torch>=2.0.0",
+    "ninja",
+    "pybind11>=2.10.0",
+    "cupy-cuda12x>=12.0.0; platform_machine != 'arm64'",
+    "cupy>=12.0.0; platform_machine == 'arm64'",
+]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -33,6 +41,7 @@ classifiers = [
 
 [tool.setuptools.package-data]
 stainx_cuda_torch = ["csrc/*.cpp", "csrc/*.cu", "csrc/*.h", "csrc/*.hpp", "csrc/*.cuh"]
+stainx_cuda_cupy = ["csrc/*.cpp", "csrc/*.cu", "csrc/*.h", "csrc/*.hpp", "csrc/*.cuh"]
 
 [dependency-groups]
 dev = [
@@ -49,6 +58,7 @@ dev = [
     "torchvision>=0.15.0",
     "ruff>=0.1.0",
     "ninja>=1.10.0",
+    "pybind11>=2.10.0",
 ]
 benchmark = [
     "prettytable",

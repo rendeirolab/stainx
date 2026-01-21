@@ -29,9 +29,15 @@ class Macenko(NormalizerTemplate):
 
         return MacenkoCupy
 
+    def _get_cupy_cuda_class(self):
+        from stainx.backends.cupy_cuda_backend import MacenkoCuPyCUDA
+
+        return MacenkoCuPyCUDA
+
     def _compute_reference_params(self, images: Any) -> None:
-        # Automatically use appropriate backend based on input type
-        if self.backend == "cupy":
+        import cupy as cp
+
+        if isinstance(images, cp.ndarray):
             backend = self._get_backend_for_computation_cupy()
             self._stain_matrix, self._target_max_conc = backend.compute_reference_stain_matrix_cupy(images)
         else:

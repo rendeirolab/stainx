@@ -28,9 +28,16 @@ class Reinhard(NormalizerTemplate):
 
         return ReinhardCupy
 
+    def _get_cupy_cuda_class(self):
+        from stainx.backends.cupy_cuda_backend import ReinhardCuPyCUDA
+
+        return ReinhardCuPyCUDA
+
     def _compute_reference_params(self, images: Any) -> None:
         # Automatically use appropriate backend based on input type
-        if self.backend == "cupy":
+        import cupy as cp
+
+        if isinstance(images, cp.ndarray):
             backend = self._get_backend_for_computation_cupy()
             self._reference_mean, self._reference_std = backend.compute_reference_mean_std_cupy(images)
         else:

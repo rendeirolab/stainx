@@ -9,7 +9,7 @@
 What this file tests
 --------------------
 On a CUDA-capable system, compare:
-- `backend="cuda"` (custom CUDA extension via `stainx_cuda_torch`)
+- `backend="torch_cuda"` (custom CUDA extension via `stainx_cuda_torch`)
 - `backend="torch"` (Torch ops)
 
 for the same inputs and assert outputs match within tolerance.
@@ -60,7 +60,7 @@ class TestCUDABackendComparisonTorch:
         result_torch_cpu = result_torch.squeeze(0).cpu().float()
 
         # CUDA backend
-        normalizer_cuda = Reinhard(device=cuda_device, backend="cuda")
+        normalizer_cuda = Reinhard(device=cuda_device, backend="torch_cuda")
         normalizer_cuda.fit(reference_image)
         result_cuda = normalizer_cuda.transform(source_image_torch)
         result_cuda_cpu = result_cuda.squeeze(0).cpu().float()
@@ -77,7 +77,7 @@ class TestCUDABackendComparisonTorch:
         result_torch_cpu = result_torch.squeeze(0).cpu().float()
 
         # CUDA backend
-        normalizer_cuda = Macenko(device=cuda_device, backend="cuda")
+        normalizer_cuda = Macenko(device=cuda_device, backend="torch_cuda")
         normalizer_cuda.fit(reference_image)
         result_cuda = normalizer_cuda.transform(source_image_torch)
         result_cuda_cpu = result_cuda.squeeze(0).cpu().float()
@@ -100,7 +100,7 @@ class TestCUDABackendComparisonTorch:
         result_torch_chw = converter.to_chw(result_torch, squeeze_batch=True)
 
         # CUDA backend
-        normalizer_cuda = HistogramMatching(device=cuda_device, backend="cuda", channel_axis=channel_axis)
+        normalizer_cuda = HistogramMatching(device=cuda_device, backend="torch_cuda", channel_axis=channel_axis)
         normalizer_cuda.fit(ref_input)
         result_cuda = normalizer_cuda.transform(src_input)
         result_cuda_chw = converter.to_chw(result_cuda, squeeze_batch=True)

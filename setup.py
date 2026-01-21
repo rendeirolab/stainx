@@ -268,6 +268,8 @@ packages = find_packages(where="src")
 # Ensure stainx_cuda_torch is included even if it doesn't have __init__.py with Python code
 if "stainx_cuda_torch" not in packages:
     packages.append("stainx_cuda_torch")
+if "stainx_cuda_cupy" not in packages:
+    packages.append("stainx_cuda_cupy")
 
 with open("README.md") as f:
     long_description = f.read()

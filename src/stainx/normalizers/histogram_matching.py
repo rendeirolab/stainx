@@ -34,11 +34,19 @@ class HistogramMatching(NormalizerTemplate):
 
         return HistogramMatchingCupy
 
+    def _get_cupy_cuda_class(self):
+        from stainx.backends.cupy_cuda_backend import HistogramMatchingCuPyCUDA
+
+        return HistogramMatchingCuPyCUDA
+
     def _get_backend_impl(self):
         if self._backend_impl is None:
-            if self.backend == "cuda":
+            if self.backend == "torch_cuda":
                 cuda_class = self._get_torch_cuda_class()
                 self._backend_impl = cuda_class(self.device, channel_axis=self.channel_axis)
+            elif self.backend == "cupy_cuda":
+                cupy_cuda_class = self._get_cupy_cuda_class()
+                self._backend_impl = cupy_cuda_class(self.device, channel_axis=self.channel_axis)
             elif self.backend == "cupy":
                 cupy_class = self._get_cupy_class()
                 self._backend_impl = cupy_class(self.device, channel_axis=self.channel_axis)
@@ -52,8 +60,9 @@ class HistogramMatching(NormalizerTemplate):
         return {"channel_axis": self.channel_axis}
 
     def _compute_reference_params(self, images: Any) -> None:
-        # Automatically use appropriate backend based on input type
-        if self.backend == "cupy":
+        import cupy as cp
+
+        if isinstance(images, cp.ndarray):
             backend = self._get_backend_for_computation_cupy()
             (self._ref_vals, self._ref_cdf, self._ref_histograms_256, self._reference_histogram) = backend.compute_reference_histograms_cupy(images)
         else:

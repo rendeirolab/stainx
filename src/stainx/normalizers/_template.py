@@ -23,7 +23,7 @@ class NormalizerTemplate(StainNormalizerBase):
 
         Args:
             device: Device specification (string or device-like object).
-            backend: Backend name ("torch", "cuda", "cupy", etc.). If None, auto-selects.
+            backend: Backend name ("torch", "torch_cuda", "cupy_cuda", "cupy"). If None, auto-selects.
         """
         super().__init__(device)
         self.backend = backend or self._select_backend()
@@ -39,7 +39,7 @@ class NormalizerTemplate(StainNormalizerBase):
         """Select the best available backend based on device and availability.
 
         Returns:
-            Backend name string ("torch", "cuda", "cupy", etc.).
+            Backend name string ("torch", "torch_cuda", "cupy_cuda", "cupy").
         """
         # Check device type (try to get type attribute if available)
         device_type = None
@@ -50,24 +50,50 @@ class NormalizerTemplate(StainNormalizerBase):
         elif isinstance(self.device, cp.cuda.Device):
             device_type = "cuda"
 
-        # Try CUDA backend (Torch CUDA extension)
-        if device_type == "cuda":
-            from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
+        # Priority order (as requested): torch, then torch_cuda, then cupy_cuda, then cupy.
+        #
+        # - "torch" works on CPU/CUDA/MPS depending on torch + device.
+        # - "torch_cuda" requires Torch CUDA extension + CUDA.
+        # - "cupy_cuda" requires CUDA + CuPy (initially implemented via CuPy ops, later via extension).
+        # - "cupy" requires CUDA + CuPy (CuPy ops).
 
-            # Check if Torch CUDA is available
-            if CUDA_AVAILABLE and torch.cuda.is_available():
-                return "cuda"
+        # 1) Prefer torch always (it's always available as a dependency).
+        if device_type != "cuda":
+            return "torch"
 
-        # Try CuPy backend
-        if device_type == "cuda" and cp.cuda.is_available():
+        # For CUDA devices, try torch (generic) first.
+        # If the user wants the extension explicitly, they should pass backend="torch_cuda".
+        # Auto-selection still follows the requested priority list.
+        # We'll still consider torch_cuda/cupy_cuda/cupy after torch.
+        # (Returning torch here would prevent selecting the others automatically, so we only
+        # return torch immediately when CUDA isn't requested.)
+
+        # 2) torch_cuda (extension) if available
+        from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE as TORCH_CUDA_AVAILABLE
+
+        if TORCH_CUDA_AVAILABLE and torch.cuda.is_available():
+            return "torch_cuda"
+
+        # 3) cupy_cuda if available
+        from stainx.backends.cupy_cuda_backend import CUDA_AVAILABLE as CUPY_CUDA_AVAILABLE
+
+        if CUPY_CUDA_AVAILABLE and cp.cuda.is_available():
+            return "cupy_cuda"
+
+        # 4) cupy if available
+        if cp.cuda.is_available():
             return "cupy"
 
-        # Default to Torch backend
+        # Fallback: torch
         return "torch"
 
     def _get_backend_impl(self):
         if self._backend_impl is None:
-            if self.backend == "cuda":
+            if self.backend == "cupy_cuda":
+                cupy_cuda_class = self._get_cupy_cuda_class()
+                kwargs = self._get_backend_kwargs()
+                self._backend_impl = cupy_cuda_class(self.device, **kwargs)
+            elif self.backend == "torch_cuda":
                 cuda_class = self._get_torch_cuda_class()
                 self._backend_impl = cuda_class(self.device)
             elif self.backend == "cupy":
@@ -91,6 +117,10 @@ class NormalizerTemplate(StainNormalizerBase):
     def _get_cupy_class(self):
         """Get the CuPy backend class. Override in subclasses."""
         raise NotImplementedError("Subclasses must implement _get_cupy_class")
+
+    def _get_cupy_cuda_class(self):
+        """Get the CuPy CUDA backend class. Override in subclasses."""
+        raise NotImplementedError("Subclasses must implement _get_cupy_cuda_class")
 
     def fit(self, images: Any) -> "NormalizerTemplate":
         """Fit the normalizer to reference images.
