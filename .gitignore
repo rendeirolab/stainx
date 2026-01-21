@@ -20,7 +20,7 @@ htmlcov/
 # Virtual environments
 .venv
 .venv-rtd
-
+uv.lock
 .idea/
 
 # Benchmark logs
