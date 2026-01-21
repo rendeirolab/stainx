@@ -3,6 +3,7 @@
 #
 # This software is distributed under the terms of the GNU General Public License v3 (GPLv3).
 # See the LICENSE file for details.
+import importlib.util
 import os
 from importlib.metadata import version
 
@@ -26,10 +27,13 @@ elif torch_lib_path not in os.environ["LD_LIBRARY_PATH"]:
 
 # Import the compiled CUDA extension if available
 FUNCTIONS_AVAILABLE = False
-from .stainx_cuda_torch import histogram_matching, macenko, reinhard  # noqa: E402
+if importlib.util.find_spec(f"{__name__}.stainx_cuda_torch") is not None:
+    from .stainx_cuda_torch import histogram_matching, macenko, reinhard
 
-if all(callable(f) for f in [histogram_matching, macenko, reinhard]):
-    FUNCTIONS_AVAILABLE = True
-    __all__ = ["FUNCTIONS_AVAILABLE", "histogram_matching", "macenko", "reinhard"]
+    if all(callable(f) for f in [histogram_matching, macenko, reinhard]):
+        FUNCTIONS_AVAILABLE = True
+        __all__ = ["FUNCTIONS_AVAILABLE", "histogram_matching", "macenko", "reinhard"]
+    else:
+        __all__ = ["FUNCTIONS_AVAILABLE"]
 else:
     __all__ = ["FUNCTIONS_AVAILABLE"]
