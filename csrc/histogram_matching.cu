@@ -11,10 +11,11 @@
  * These kernels have no PyTorch dependencies and can be used by any CUDA interface.
  */
 
-#include <cub/cub.cuh>
 #include <cuda_runtime.h>
 
 #define THREADS_PER_BLOCK 256
+// Histogram matching parameters
+#define HM_NUM_BINS 256
 
 // Kernel to convert input to uint8 (handles float input, scaling from [0,1] to [0,255])
 __global__ void convert_to_uint8_kernel(const float* input, uint8_t* output, bool scale_from_01, int num_pixels) {
@@ -25,12 +26,6 @@ __global__ void convert_to_uint8_kernel(const float* input, uint8_t* output, boo
         val         = fmaxf(0.0f, fminf(255.0f, val));
         output[idx] = (uint8_t) val;
     }
-}
-
-// Kernel to normalize histogram (divide by sum)
-__global__ void normalize_histogram_kernel(float* histogram, float sum, int num_bins) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < num_bins) { histogram[idx] = histogram[idx] / (sum + 1e-8f); }
 }
 
 // Kernel to scale and clamp output
@@ -48,174 +43,200 @@ __global__ void scale_clamp_output_kernel(float* output, bool scale_to_01, bool 
     }
 }
 
-// Fused kernel to process a single channel (one block per channel)
-// Each block processes one channel completely: histogram -> normalize -> CDF -> lookup -> apply
-__global__ void process_channel_kernel(const uint8_t* images_uint8,  // Input images (N*C*H*W, channels interleaved)
-                                       float* output,                // Output images (N*C*H*W, channels interleaved)
-                                       const float* ref_hist,        // Reference histogram(s): (C, 256) or (256,)
-                                       float* channel_buffers,       // Per-channel buffers: (C, 4*num_bins) for hist, cdf, ref_cdf, lookup
-                                       int N,
-                                       int C,
-                                       int H,
-                                       int W,                         // Image dimensions
-                                       int num_bins,                  // Number of histogram bins (256)
-                                       int total_pixels_per_channel,  // N * H * W
-                                       bool per_channel_histograms    // Whether ref_hist is per-channel
-) {
-    // Each block processes one channel
-    int channel_idx = blockIdx.x;
-    if (channel_idx >= C) return;
+// Build partial histograms for each channel.
+// Grid: dim3(blocks_per_channel, C, 1)
+// partial_hist layout: [C, blocks_per_channel, 256] (uint32)
+__global__ void hm_partial_hist_kernel(const uint8_t* images_uint8,
+                                      uint32_t* partial_hist,
+                                      int N,
+                                      int C,
+                                      int H,
+                                      int W,
+                                      int blocks_per_channel) {
+    const int channel_idx = blockIdx.y;
+    const int block_in_channel = blockIdx.x;
 
-    // In (N, C, H, W) format, channels are interleaved across images
-    // For channel c, data is at: n * (C*H*W) + c * (H*W) + h * W + w
-    // So we need to stride by C*H*W between images, and start at c*H*W
-    int pixels_per_image      = H * W;
-    int stride_between_images = C * pixels_per_image;            // C * H * W
-    int channel_base_offset   = channel_idx * pixels_per_image;  // c * H * W
+    const int pixels_per_image = H * W;
+    const int stride_between_images = C * pixels_per_image;
+    const int channel_base_offset = channel_idx * pixels_per_image;
+    const int total_pixels_per_channel = N * pixels_per_image;
 
-    // Get pointers to this channel's buffers
-    int buffer_offset      = channel_idx * 4 * num_bins;
-    float* source_hist     = channel_buffers + buffer_offset;
-    float* source_cdf      = channel_buffers + buffer_offset + num_bins;
-    float* ref_cdf_channel = channel_buffers + buffer_offset + 2 * num_bins;  // Temporary for per-channel case
-    float* lookup_table    = channel_buffers + buffer_offset + 3 * num_bins;
-
-    // Get reference CDF pointer
-    const float* ref_cdf_ptr;
-    if (per_channel_histograms) {
-        // Per-channel reference histogram - need to compute CDF
-        // Use source_hist temporarily for ref_hist_channel (we'll overwrite it later)
-        float* ref_hist_channel = source_hist;  // Temporary, will be overwritten
-
-        // Copy reference histogram for this channel
-        const float* ref_hist_src = ref_hist + channel_idx * num_bins;
-        for (int i = threadIdx.x; i < num_bins; i += blockDim.x) { ref_hist_channel[i] = ref_hist_src[i]; }
-        __syncthreads();
-
-        // Compute sum of reference histogram (sequential for correctness with 256 elements)
-        // For small arrays, sequential is fast and guaranteed correct
-        __shared__ float ref_sum_shared;
-        if (threadIdx.x == 0) {
-            float sum = 0.0f;
-            for (int i = 0; i < num_bins; i++) { sum += ref_hist_channel[i]; }
-            ref_sum_shared = sum;
-        }
-        __syncthreads();
-        float ref_sum = ref_sum_shared;
-
-        // Normalize reference histogram
-        float inv_sum = 1.0f / (ref_sum + 1e-8f);
-        for (int i = threadIdx.x; i < num_bins; i += blockDim.x) { ref_hist_channel[i] *= inv_sum; }
-        __syncthreads();
-
-        // Compute reference CDF (prefix sum - sequential for correctness)
-        // For 256 elements, sequential is fast and guaranteed correct
-        if (threadIdx.x == 0) {
-            float sum = 0.0f;
-            for (int i = 0; i < num_bins; i++) {
-                sum += ref_hist_channel[i];
-                ref_cdf_channel[i] = sum;
-            }
-        }
-        __syncthreads();
-        ref_cdf_ptr = ref_cdf_channel;
-
-        // Now zero out source histogram (ref_hist_channel was using this space)
-    } else {
-        // Single reference histogram - already computed, just get pointer
-        ref_cdf_ptr = ref_hist;  // In this case, ref_hist is actually the pre-computed CDF
-    }
-
-    // Zero out source histogram
-    for (int i = threadIdx.x; i < num_bins; i += blockDim.x) { source_hist[i] = 0.0f; }
-    __syncthreads();
-
-    // Compute histogram using atomic operations
-    // Access channel data with proper striding for (N, C, H, W) layout
-    int num_pixels = total_pixels_per_channel;
-    for (int pixel_idx = threadIdx.x; pixel_idx < num_pixels; pixel_idx += blockDim.x) {
-        // Calculate which image and pixel within that image
-        int n              = pixel_idx / pixels_per_image;  // Image index
-        int pixel_in_image = pixel_idx % pixels_per_image;  // Pixel index within image
-        // Calculate actual memory offset: n * (C*H*W) + c * (H*W) + pixel_in_image
-        int mem_offset = n * stride_between_images + channel_base_offset + pixel_in_image;
-        uint8_t value  = images_uint8[mem_offset];
-        atomicAdd(&source_hist[value], 1.0f);
+    __shared__ uint32_t hist_s[HM_NUM_BINS];
+    for (int i = threadIdx.x; i < HM_NUM_BINS; i += blockDim.x) {
+        hist_s[i] = 0;
     }
     __syncthreads();
 
-    // Normalize source histogram
-    float total_sum = (float) total_pixels_per_channel;
-    float inv_total = 1.0f / (total_sum + 1e-8f);
-    for (int i = threadIdx.x; i < num_bins; i += blockDim.x) { source_hist[i] *= inv_total; }
+    // Fixed tile size per block to control partial count and shared contention.
+    // Each block covers a contiguous range of pixel indices within this channel.
+    const int pixels_per_block = 4096;  // tuneable (16 pixels/thread at 256 threads)
+    const int tile_start = block_in_channel * pixels_per_block;
+    const int tile_end = min(tile_start + pixels_per_block, total_pixels_per_channel);
+
+    for (int pixel_idx = tile_start + threadIdx.x; pixel_idx < tile_end; pixel_idx += blockDim.x) {
+        const int n = pixel_idx / pixels_per_image;
+        const int pixel_in_image = pixel_idx - n * pixels_per_image;
+        const int mem_offset = n * stride_between_images + channel_base_offset + pixel_in_image;
+        const uint8_t v = images_uint8[mem_offset];
+        atomicAdd(&hist_s[v], 1u);
+    }
     __syncthreads();
 
-    // Compute source CDF (prefix sum - sequential for correctness)
-    // For 256 elements, sequential is fast and guaranteed correct
-    if (threadIdx.x == 0) {
-        float sum = 0.0f;
-        for (int i = 0; i < num_bins; i++) {
-            sum += source_hist[i];
-            source_cdf[i] = sum;
+    // Store shared histogram into global partial buffer.
+    // Indexing: (((channel * blocks_per_channel) + block) * 256 + bin)
+    const int base = (channel_idx * blocks_per_channel + block_in_channel) * HM_NUM_BINS;
+    for (int i = threadIdx.x; i < HM_NUM_BINS; i += blockDim.x) {
+        partial_hist[base + i] = hist_s[i];
+    }
+}
+
+// Reduce partial histograms into final per-channel histogram.
+// Grid: dim3(1, C, 1), block: 256 threads
+// hist_out layout: [C, 256] (uint32)
+__global__ void hm_reduce_hist_kernel(const uint32_t* partial_hist, uint32_t* hist_out, int C, int blocks_per_channel) {
+    const int channel_idx = blockIdx.y;
+    const int bin = threadIdx.x;
+    if (bin >= HM_NUM_BINS) return;
+
+    uint32_t sum = 0;
+    const int base_channel = channel_idx * blocks_per_channel * HM_NUM_BINS;
+    for (int b = 0; b < blocks_per_channel; ++b) {
+        sum += partial_hist[base_channel + b * HM_NUM_BINS + bin];
+    }
+    hist_out[channel_idx * HM_NUM_BINS + bin] = sum;
+}
+
+// Compute per-channel reference CDF from reference histogram.
+// Supports:
+// - per_channel_histograms=false: ref_hist is [256]
+// - per_channel_histograms=true:  ref_hist is [C, 256]
+// Output: ref_cdf [C, 256]
+// Grid: dim3(C, 1, 1), block: 256 threads
+__global__ void hm_ref_cdf_kernel(const float* ref_hist, float* ref_cdf, int C, bool per_channel_histograms) {
+    const int channel_idx = blockIdx.x;
+    const int bin = threadIdx.x;
+
+    // Shared buffer for the normalized histogram (float) and cdf (float).
+    __shared__ float hist_s[HM_NUM_BINS];
+    __shared__ float cdf_s[HM_NUM_BINS];
+    __shared__ float sum_s;
+
+    // Load histogram (or broadcast single histogram)
+    if (bin < HM_NUM_BINS) {
+        const int src_base = per_channel_histograms ? (channel_idx * HM_NUM_BINS) : 0;
+        hist_s[bin] = ref_hist[src_base + bin];
+    }
+    __syncthreads();
+
+    if (bin == 0) {
+        float s = 0.0f;
+        #pragma unroll
+        for (int i = 0; i < HM_NUM_BINS; ++i) s += hist_s[i];
+        sum_s = s;
+    }
+    __syncthreads();
+
+    if (bin < HM_NUM_BINS) {
+        hist_s[bin] = hist_s[bin] / (sum_s + 1e-8f);
+    }
+    __syncthreads();
+
+    if (bin == 0) {
+        float run = 0.0f;
+        #pragma unroll
+        for (int i = 0; i < HM_NUM_BINS; ++i) {
+            run += hist_s[i];
+            cdf_s[i] = run;
         }
     }
     __syncthreads();
 
-    // Build lookup table
-    for (int idx = threadIdx.x; idx < num_bins; idx += blockDim.x) {
-        float source_quantile = source_cdf[idx];
-        float ref_min         = ref_cdf_ptr[0];
-        float ref_max         = ref_cdf_ptr[num_bins - 1];
+    if (bin < HM_NUM_BINS) {
+        ref_cdf[channel_idx * HM_NUM_BINS + bin] = cdf_s[bin];
+    }
+}
 
-        // Binary search to find position
-        int left  = 0;
-        int right = num_bins;
-        int mid;
+// Build LUT for each channel based on source histogram and reference CDF.
+// Inputs:
+// - hist_u32: [C, 256] source histogram counts
+// - ref_cdf:  [C, 256] reference CDF
+// Output:
+// - lut:      [C, 256] float mapping for each uint8 value
+// Grid: dim3(C, 1, 1), block: 256 threads
+__global__ void hm_build_lut_kernel(const uint32_t* hist_u32, const float* ref_cdf, float* lut, int N, int H, int W) {
+    const int channel_idx = blockIdx.x;
+    const int bin = threadIdx.x;
 
+    __shared__ float source_cdf_s[HM_NUM_BINS];
+    __shared__ float ref_cdf_s[HM_NUM_BINS];
+    __shared__ float ref_min_s;
+    __shared__ float ref_max_s;
+
+    // Load ref CDF to shared
+    if (bin < HM_NUM_BINS) {
+        ref_cdf_s[bin] = ref_cdf[channel_idx * HM_NUM_BINS + bin];
+    }
+    __syncthreads();
+
+    if (bin == 0) {
+        ref_min_s = ref_cdf_s[0];
+        ref_max_s = ref_cdf_s[HM_NUM_BINS - 1];
+    }
+    __syncthreads();
+
+    // Compute source CDF (sequential in one thread; 256 bins only)
+    if (bin == 0) {
+        const float inv_total = 1.0f / (float)(N * H * W + 1e-8f);
+        float run = 0.0f;
+        #pragma unroll
+        for (int i = 0; i < HM_NUM_BINS; ++i) {
+            run += (float)hist_u32[channel_idx * HM_NUM_BINS + i] * inv_total;
+            source_cdf_s[i] = run;
+        }
+    }
+    __syncthreads();
+
+    // Build LUT in parallel across bins (binary search in ref CDF)
+    if (bin < HM_NUM_BINS) {
+        const float source_q = source_cdf_s[bin];
+        const float ref_min = ref_min_s;
+        const float ref_max = ref_max_s;
+
+        int left = 0;
+        int right = HM_NUM_BINS;
         while (left < right) {
-            mid = (left + right) / 2;
-            if (ref_cdf_ptr[mid] < source_quantile) {
-                left = mid + 1;
-            } else {
-                right = mid;
-            }
+            const int mid = (left + right) >> 1;
+            if (ref_cdf_s[mid] < source_q) left = mid + 1;
+            else right = mid;
         }
 
-        // Clamp indices
-        int indices = max(1, min(left, num_bins - 1));
-
-        // Get quantiles for interpolation
-        float quantile_left  = ref_cdf_ptr[indices - 1];
-        float quantile_right = ref_cdf_ptr[indices];
-        float quantile_diff  = quantile_right - quantile_left;
-
-        // Compute alpha for interpolation
+        int idx = max(1, min(left, HM_NUM_BINS - 1));
+        const float ql = ref_cdf_s[idx - 1];
+        const float qr = ref_cdf_s[idx];
+        const float diff = qr - ql;
         float alpha = 0.0f;
-        if (quantile_diff > 1e-10f) { alpha = (source_quantile - quantile_left) / quantile_diff; }
+        if (diff > 1e-10f) alpha = (source_q - ql) / diff;
+        float matched = (float)(idx - 1) + alpha;
 
-        // Interpolate values
-        float matched_value = (indices - 1) + alpha;
+        if (source_q <= ref_min) matched = 0.0f;
+        if (source_q >= ref_max) matched = (float)(HM_NUM_BINS - 1);
 
-        // Handle edge cases
-        bool below_min = (source_quantile <= ref_min);
-        bool above_max = (source_quantile >= ref_max);
-
-        if (below_min) { matched_value = 0.0f; }
-        if (above_max) { matched_value = (float) (num_bins - 1); }
-
-        lookup_table[idx] = fmaxf(0.0f, fminf(255.0f, matched_value));
+        lut[channel_idx * HM_NUM_BINS + bin] = fmaxf(0.0f, fminf(255.0f, matched));
     }
-    __syncthreads();
+}
 
-    // Apply lookup table to output
-    // Access channel data with proper striding for (N, C, H, W) layout
-    for (int pixel_idx = threadIdx.x; pixel_idx < num_pixels; pixel_idx += blockDim.x) {
-        // Calculate which image and pixel within that image
-        int n              = pixel_idx / pixels_per_image;  // Image index
-        int pixel_in_image = pixel_idx % pixels_per_image;  // Pixel index within image
-        // Calculate actual memory offset: n * (C*H*W) + c * (H*W) + pixel_in_image
-        int mem_offset      = n * stride_between_images + channel_base_offset + pixel_in_image;
-        uint8_t pixel_value = images_uint8[mem_offset];
-        output[mem_offset]  = lookup_table[pixel_value];
-    }
+// Apply LUT to all pixels (NCHW contiguous).
+// Grid: 1D over total pixels (N*C*H*W)
+__global__ void hm_apply_lut_kernel(const uint8_t* images_uint8, float* output, const float* lut, int N, int C, int H, int W) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int total = N * C * H * W;
+    if (idx >= total) return;
+
+    const int pixels_per_image = H * W;
+    const int pixels_per_channel = pixels_per_image;
+    const int idx_in_image = idx % (C * pixels_per_channel);
+    const int channel = idx_in_image / pixels_per_channel;
+
+    const uint8_t v = images_uint8[idx];
+    output[idx] = lut[channel * HM_NUM_BINS + (int)v];
 }

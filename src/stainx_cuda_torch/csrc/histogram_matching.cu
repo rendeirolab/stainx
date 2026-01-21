@@ -111,130 +111,79 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
                     ")");
     }
 
-    // Pre-compute reference CDFs on GPU using CUB
-    torch::Tensor ref_cdf;
-    if (!per_channel_histograms) {
-        // Single reference histogram - normalize and compute CDF on GPU using CUB
-        ref_cdf = torch::empty({num_bins}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
-
-        // Compute sum using CUB DeviceReduce::Sum
-        void* d_temp_storage      = nullptr;
-        size_t temp_storage_bytes = 0;
-        float ref_sum             = 0.0f;
-
-        // Determine temporary storage requirements for sum
-        cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, ref_hist.data_ptr<float>(), &ref_sum, num_bins, stream);
-
-        // Allocate temporary storage
-        err = cudaMalloc(&d_temp_storage, temp_storage_bytes);
-        if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error allocating temporary storage for reference histogram sum: ", cudaGetErrorString(err)); }
-
-        // Run sum reduction
-        cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, ref_hist.data_ptr<float>(), &ref_sum, num_bins, stream);
-
-        // Synchronize to ensure sum is computed (DeviceReduce writes to host pointer)
-        err = cudaStreamSynchronize(stream);
-        if (err != cudaSuccess) {
-            cudaFree(d_temp_storage);
-            TORCH_CHECK(false, "CUDA error synchronizing stream after reference histogram sum: ", cudaGetErrorString(err));
-        }
-
-        // Normalize histogram (copy first to avoid modifying original)
-        torch::Tensor ref_hist_norm = torch::empty_like(ref_hist);
-        err                         = cudaMemcpyAsync(ref_hist_norm.data_ptr<float>(), ref_hist.data_ptr<float>(), num_bins * sizeof(float), cudaMemcpyDeviceToDevice, stream);
-        if (err != cudaSuccess) {
-            cudaFree(d_temp_storage);
-            TORCH_CHECK(false, "CUDA error copying reference histogram: ", cudaGetErrorString(err));
-        }
-        int num_threads = THREADS_PER_BLOCK;
-        int num_blocks  = (num_bins + num_threads - 1) / num_threads;
-        normalize_histogram_kernel<<<num_blocks, num_threads, 0, stream>>>(ref_hist_norm.data_ptr<float>(), ref_sum, num_bins);
-        err = cudaGetLastError();
-        if (err != cudaSuccess) {
-            cudaFree(d_temp_storage);
-            TORCH_CHECK(false, "CUDA error in normalize_histogram_kernel: ", cudaGetErrorString(err));
-        }
-
-        // Compute CDF using CUB DeviceScan::InclusiveSum
-        // Determine temporary storage requirements for scan
-        cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes, ref_hist_norm.data_ptr<float>(), ref_cdf.data_ptr<float>(), num_bins, stream);
-
-        // Reallocate if needed (scan might need more storage)
-        err = cudaFree(d_temp_storage);
-        if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error freeing temporary storage before scan: ", cudaGetErrorString(err)); }
-        if (temp_storage_bytes > 0) {
-            err = cudaMalloc(&d_temp_storage, temp_storage_bytes);
-            if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error allocating temporary storage for scan: ", cudaGetErrorString(err)); }
-        }
-
-        // Run inclusive scan (prefix sum)
-        cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes, ref_hist_norm.data_ptr<float>(), ref_cdf.data_ptr<float>(), num_bins, stream);
-
-        // Free temporary storage
-        if (d_temp_storage != nullptr) {
-            err = cudaFree(d_temp_storage);
-            if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error freeing temporary storage after scan: ", cudaGetErrorString(err)); }
-        }
-    }
-
     // Allocate output tensor
     torch::Tensor output = torch::empty({N, C, H, W}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
 
-    // Pre-allocate per-channel buffers for parallel processing
-    // Each channel needs: source_hist (num_bins), source_cdf (num_bins), ref_cdf_channel (num_bins, for per-channel case), lookup_table (num_bins)
-    // Total: C * 4 * num_bins
+    // Choose blocks per channel based on workload (kernel uses pixels_per_block=4096).
+    // Cap to avoid excessive temporary memory for very large images.
+    const int pixels_per_block = 4096;
+    int blocks_per_channel = (total_pixels_per_channel + pixels_per_block - 1) / pixels_per_block;
+    if (blocks_per_channel < 1) blocks_per_channel = 1;
+    if (blocks_per_channel > 2048) blocks_per_channel = 2048;
 
-    // Per-channel buffers: (C, 4*num_bins) - for hist, cdf, ref_cdf (temp), lookup_table
-    torch::Tensor channel_buffers = torch::empty({C, 4 * num_bins}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
+    // Temporary buffers
+    // partial_hist: [C, blocks_per_channel, 256] int32 (used as uint32)
+    torch::Tensor partial_hist = torch::empty({C, blocks_per_channel, num_bins}, torch::TensorOptions().dtype(torch::kInt32).device(input_images.device()));
+    // hist_u32: [C, 256] int32 (used as uint32)
+    torch::Tensor hist_u32 = torch::empty({C, num_bins}, torch::TensorOptions().dtype(torch::kInt32).device(input_images.device()));
+    // ref_cdf: [C, 256] float32
+    torch::Tensor ref_cdf = torch::empty({C, num_bins}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
+    // lut: [C, 256] float32
+    torch::Tensor lut = torch::empty({C, num_bins}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
 
-    // Prepare reference data pointer
-    const float* ref_data_ptr;
-    if (!per_channel_histograms) {
-        // Single histogram - use pre-computed CDF
-        ref_data_ptr = ref_cdf.data_ptr<float>();
-    } else {
-        // Per-channel histograms - pass the histogram data
-        ref_data_ptr = ref_hist.data_ptr<float>();
-    }
-
-    // Launch parallel kernel: one block per channel
-    // Minimal shared memory needed (just for sum broadcast)
-    size_t shared_mem_size = sizeof(float);  // For ref_sum_shared
-
-    int threads_per_block = THREADS_PER_BLOCK;
-
-    process_channel_kernel<<<C, threads_per_block, shared_mem_size, stream>>>(images_uint8.data_ptr<uint8_t>(), output.data_ptr<float>(), ref_data_ptr, channel_buffers.data_ptr<float>(), N, C, H, W, num_bins, total_pixels_per_channel, per_channel_histograms);
+    // 1) Partial histograms (many blocks per channel)
+    dim3 grid_partial(blocks_per_channel, C, 1);
+    hm_partial_hist_kernel<<<grid_partial, num_threads, 0, stream>>>(images_uint8.data_ptr<uint8_t>(),
+                                                                     reinterpret_cast<uint32_t*>(partial_hist.data_ptr<int32_t>()),
+                                                                     N,
+                                                                     C,
+                                                                     H,
+                                                                     W,
+                                                                     blocks_per_channel);
     err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        TORCH_CHECK(false,
-                    "CUDA error in process_channel_kernel: ",
-                    cudaGetErrorString(err),
-                    ". This may indicate invalid input shapes, out-of-bounds memory access, or device mismatch. "
-                    "Input shape: (",
-                    N,
-                    ", ",
-                    C,
-                    ", ",
-                    H,
-                    ", ",
-                    W,
-                    "), "
-                    "Reference histogram shape: ",
-                    reference_histogram.sizes(),
-                    ", per_channel_histograms: ",
-                    per_channel_histograms);
-    }
+    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in hm_partial_hist_kernel: ", cudaGetErrorString(err)); }
 
-    // Scale and clamp output
+    // 2) Reduce partials -> final histogram per channel
+    dim3 grid_reduce(1, C, 1);
+    hm_reduce_hist_kernel<<<grid_reduce, num_threads, 0, stream>>>(reinterpret_cast<const uint32_t*>(partial_hist.data_ptr<int32_t>()),
+                                                                   reinterpret_cast<uint32_t*>(hist_u32.data_ptr<int32_t>()),
+                                                                   C,
+                                                                   blocks_per_channel);
+    err = cudaGetLastError();
+    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in hm_reduce_hist_kernel: ", cudaGetErrorString(err)); }
+
+    // 3) Compute reference CDF per channel (single hist is broadcast)
+    hm_ref_cdf_kernel<<<C, num_threads, 0, stream>>>(ref_hist.data_ptr<float>(), ref_cdf.data_ptr<float>(), C, per_channel_histograms);
+    err = cudaGetLastError();
+    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in hm_ref_cdf_kernel: ", cudaGetErrorString(err)); }
+
+    // 4) Build LUT per channel from source hist + reference CDF
+    hm_build_lut_kernel<<<C, num_threads, 0, stream>>>(reinterpret_cast<const uint32_t*>(hist_u32.data_ptr<int32_t>()),
+                                                       ref_cdf.data_ptr<float>(),
+                                                       lut.data_ptr<float>(),
+                                                       N,
+                                                       H,
+                                                       W);
+    err = cudaGetLastError();
+    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in hm_build_lut_kernel: ", cudaGetErrorString(err)); }
+
+    // 5) Apply LUT across all pixels
     int total_pixels = N * C * H * W;
     int num_blocks   = (total_pixels + num_threads - 1) / num_threads;
+    hm_apply_lut_kernel<<<num_blocks, num_threads, 0, stream>>>(images_uint8.data_ptr<uint8_t>(),
+                                                                output.data_ptr<float>(),
+                                                                lut.data_ptr<float>(),
+                                                                N,
+                                                                C,
+                                                                H,
+                                                                W);
+    err = cudaGetLastError();
+    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in hm_apply_lut_kernel: ", cudaGetErrorString(err)); }
+
+    // Scale and clamp output
     scale_clamp_output_kernel<<<num_blocks, num_threads, 0, stream>>>(output.data_ptr<float>(), needs_scale_back, false, total_pixels);
     err = cudaGetLastError();
     if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error in scale_clamp_output_kernel: ", cudaGetErrorString(err)); }
-
-    // Synchronize before final dtype conversion
-    err = cudaStreamSynchronize(stream);
-    if (err != cudaSuccess) { TORCH_CHECK(false, "CUDA error synchronizing stream: ", cudaGetErrorString(err)); }
 
     // Preserve original dtype (matching PyTorch backend logic)
     if (was_uint8_or_high_range && !needs_scale_back) {
