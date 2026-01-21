@@ -5,9 +5,13 @@
 # See the LICENSE file for details.
 from typing import Any, ClassVar
 
-import cupy as cp
 import numpy as np
 import torch
+
+try:
+    import cupy as cp
+except ImportError:
+    cp = None
 
 
 def _get_torch_device(device_str: str) -> Any | None:
@@ -17,6 +21,8 @@ def _get_torch_device(device_str: str) -> Any | None:
 
 def _get_cupy_device(device_str: str) -> Any | None:
     """Get CuPy device if available."""
+    if cp is None:
+        return None
     if device_str != "cuda":
         return None
     if cp.cuda.is_available():
@@ -107,10 +113,12 @@ class ChannelFormatConverter:
 
     @staticmethod
     def _is_cupy_array(x: Any) -> bool:
+        if cp is None:
+            return False
         return isinstance(x, cp.ndarray)
 
     @staticmethod
-    def _to_numpy(x: torch.Tensor | np.ndarray | cp.ndarray) -> np.ndarray:
+    def _to_numpy(x: torch.Tensor | np.ndarray | Any) -> np.ndarray:
         if ChannelFormatConverter._is_torch_tensor(x):
             return x.cpu().numpy()
         if ChannelFormatConverter._is_cupy_array(x):
@@ -129,7 +137,7 @@ class ChannelFormatConverter:
         return x
 
     @staticmethod
-    def _squeeze(x: torch.Tensor | np.ndarray | cp.ndarray, dim: int | None = None) -> torch.Tensor | np.ndarray | cp.ndarray:
+    def _squeeze(x: torch.Tensor | np.ndarray | Any, dim: int | None = None) -> torch.Tensor | np.ndarray | Any:
         if dim is not None:
             if ChannelFormatConverter._is_torch_tensor(x):
                 return x.squeeze(dim)
@@ -143,7 +151,7 @@ class ChannelFormatConverter:
         return np.squeeze(x)
 
     @staticmethod
-    def _transpose(x: torch.Tensor | np.ndarray | cp.ndarray, axes: tuple) -> torch.Tensor | np.ndarray | cp.ndarray:
+    def _transpose(x: torch.Tensor | np.ndarray | Any, axes: tuple) -> torch.Tensor | np.ndarray | Any:
         if ChannelFormatConverter._is_torch_tensor(x):
             return x.permute(*axes)
         if ChannelFormatConverter._is_cupy_array(x):
@@ -151,21 +159,21 @@ class ChannelFormatConverter:
         return np.transpose(x, axes)
 
     @staticmethod
-    def _cpu(x: torch.Tensor | np.ndarray | cp.ndarray) -> torch.Tensor | np.ndarray | cp.ndarray:
+    def _cpu(x: torch.Tensor | np.ndarray | Any) -> torch.Tensor | np.ndarray | Any:
         if ChannelFormatConverter._is_torch_tensor(x):
             return x.cpu()
         # For CuPy arrays, return as-is (they're already on GPU or can be moved)
         return x
 
     @staticmethod
-    def _float(x: torch.Tensor | np.ndarray | cp.ndarray) -> torch.Tensor | np.ndarray | cp.ndarray:
+    def _float(x: torch.Tensor | np.ndarray | Any) -> torch.Tensor | np.ndarray | Any:
         if ChannelFormatConverter._is_torch_tensor(x):
             return x.float()
         if ChannelFormatConverter._is_cupy_array(x):
             return x.astype(cp.float32)
         return x.astype(np.float32)
 
-    def to_hwc(self, images: torch.Tensor | np.ndarray | cp.ndarray, squeeze_batch: bool = False) -> np.ndarray:
+    def to_hwc(self, images: torch.Tensor | np.ndarray | Any, squeeze_batch: bool = False) -> np.ndarray:
         images_np = self._to_numpy(images)
 
         if squeeze_batch:
@@ -175,7 +183,7 @@ class ChannelFormatConverter:
             return np.transpose(images_np, self.permute_to_hwc)
         return images_np
 
-    def prepare_for_normalizer(self, images: torch.Tensor | np.ndarray | cp.ndarray) -> torch.Tensor | np.ndarray | cp.ndarray:
+    def prepare_for_normalizer(self, images: torch.Tensor | np.ndarray | Any) -> torch.Tensor | np.ndarray | Any:
         if self.is_channels_first:
             # channels-first: return as-is on CPU
             return self._cpu(images)
@@ -191,7 +199,7 @@ class ChannelFormatConverter:
             return cp.expand_dims(images, axis=0)
         return np.expand_dims(images, axis=0)
 
-    def to_chw(self, images: torch.Tensor | np.ndarray | cp.ndarray, squeeze_batch: bool = True, return_torch: bool = True) -> torch.Tensor | np.ndarray | cp.ndarray:
+    def to_chw(self, images: torch.Tensor | np.ndarray | Any, squeeze_batch: bool = True, return_torch: bool = True) -> torch.Tensor | np.ndarray | Any:
         result = self._cpu(images)
         original_ndim = len(result.shape)
 

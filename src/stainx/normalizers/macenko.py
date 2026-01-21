@@ -35,9 +35,9 @@ class Macenko(NormalizerTemplate):
         return MacenkoCuPyCUDA
 
     def _compute_reference_params(self, images: Any) -> None:
-        import cupy as cp
+        from stainx.normalizers import _template
 
-        if isinstance(images, cp.ndarray):
+        if _template.cp is not None and isinstance(images, _template.cp.ndarray):
             backend = self._get_backend_for_computation_cupy()
             self._stain_matrix, self._target_max_conc = backend.compute_reference_stain_matrix_cupy(images)
         else:

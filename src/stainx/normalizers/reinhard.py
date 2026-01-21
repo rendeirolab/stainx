@@ -35,9 +35,9 @@ class Reinhard(NormalizerTemplate):
 
     def _compute_reference_params(self, images: Any) -> None:
         # Automatically use appropriate backend based on input type
-        import cupy as cp
+        from stainx.normalizers import _template
 
-        if isinstance(images, cp.ndarray):
+        if _template.cp is not None and isinstance(images, _template.cp.ndarray):
             backend = self._get_backend_for_computation_cupy()
             self._reference_mean, self._reference_std = backend.compute_reference_mean_std_cupy(images)
         else:

@@ -5,7 +5,10 @@
 # See the LICENSE file for details.
 from typing import Any
 
-import cupy as cp
+try:
+    import cupy as cp
+except ImportError:
+    cp = None
 import torch
 
 from stainx.base import StainNormalizerBase
@@ -77,11 +80,11 @@ class NormalizerTemplate(StainNormalizerBase):
         # 3) cupy_cuda if available
         from stainx.backends.cupy_cuda_backend import CUDA_AVAILABLE as CUPY_CUDA_AVAILABLE
 
-        if CUPY_CUDA_AVAILABLE and cp.cuda.is_available():
+        if CUPY_CUDA_AVAILABLE and cp is not None and cp.cuda.is_available():
             return "cupy_cuda"
 
         # 4) cupy if available
-        if cp.cuda.is_available():
+        if cp is not None and cp.cuda.is_available():
             return "cupy"
 
         # Fallback: torch
@@ -166,7 +169,7 @@ class NormalizerTemplate(StainNormalizerBase):
             device_type = self.device.type
         elif isinstance(self.device, str):
             device_type = self.device
-        elif isinstance(self.device, cp.cuda.Device):
+        elif cp is not None and isinstance(self.device, cp.cuda.Device):
             device_type = "cuda"
 
         # Try to use CUDA device if available
@@ -198,12 +201,12 @@ class NormalizerTemplate(StainNormalizerBase):
             device_type = self.device.type
         elif isinstance(self.device, str):
             device_type = self.device
-        elif isinstance(self.device, cp.cuda.Device):
+        elif cp is not None and isinstance(self.device, cp.cuda.Device):
             device_type = "cuda"
 
         # Try to use CUDA device if available
         device = self.device
-        if device_type == "cuda" and cp.cuda.is_available():
+        if device_type == "cuda" and cp is not None and cp.cuda.is_available():
             device = cp.cuda.Device(0)
 
         # Use CuPy backend for fitting

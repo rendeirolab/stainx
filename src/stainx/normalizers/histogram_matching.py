@@ -60,9 +60,9 @@ class HistogramMatching(NormalizerTemplate):
         return {"channel_axis": self.channel_axis}
 
     def _compute_reference_params(self, images: Any) -> None:
-        import cupy as cp
+        from stainx.normalizers import _template
 
-        if isinstance(images, cp.ndarray):
+        if _template.cp is not None and isinstance(images, _template.cp.ndarray):
             backend = self._get_backend_for_computation_cupy()
             (self._ref_vals, self._ref_cdf, self._ref_histograms_256, self._reference_histogram) = backend.compute_reference_histograms_cupy(images)
         else:
