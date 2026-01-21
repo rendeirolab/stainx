@@ -10,9 +10,9 @@ import sys
 from datetime import datetime
 from typing import Any
 
+import cupy as cp
 import numpy as np
 import torch
-import cupy as cp
 from prettytable import PrettyTable
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -31,20 +31,18 @@ def convert_to_backend_format(data: np.ndarray, backend: str) -> Any:
     """Convert numpy array to the appropriate backend format."""
     if backend in ("torch", "torch_cuda"):
         return torch.from_numpy(data).to("cuda" if backend == "torch_cuda" else "cpu")
-    elif backend in ("cupy", "cupy_cuda"):
+    if backend in ("cupy", "cupy_cuda"):
         return cp.asarray(data)
-    else:
-        return data
+    return data
 
 
 def get_backend_device(backend: str):
     """Get the appropriate device object for the backend."""
     if backend in ("torch", "torch_cuda"):
         return torch.device("cuda")
-    elif backend in ("cupy", "cupy_cuda"):
+    if backend in ("cupy", "cupy_cuda"):
         return cp.cuda.Device(0)
-    else:
-        return "cuda"
+    return "cuda"
 
 
 def run_benchmark(method: str, reference_batch_np: np.ndarray, source_batch_np: np.ndarray, backend1: str, backend2: str, warmup: int, runs: int, logger=None) -> dict[str, dict[str, Any]]:
@@ -142,7 +140,7 @@ def main():
             # Generate data as torch tensors first, then convert to numpy
             reference_batch_torch = generate_batch(batch_size, height, width, args.channels, seed=args.seed, device=device)
             source_batch_torch = generate_batch(batch_size, height, width, args.channels, seed=args.seed + 1, device=device)
-            
+
             # Convert to numpy arrays
             reference_batch_np = reference_batch_torch.cpu().numpy()
             source_batch_np = source_batch_torch.cpu().numpy()
@@ -162,24 +160,24 @@ def main():
                 # Convert results to torch tensors for error calculation
                 backend1_result = results["backend1"]["result"][0]
                 backend2_result = results["backend2"]["result"][0]
-                
+
                 # Convert cupy arrays to numpy, then to torch if needed
                 if isinstance(backend1_result, cp.ndarray):
                     backend1_result = torch.from_numpy(cp.asnumpy(backend1_result))
                 elif not isinstance(backend1_result, torch.Tensor):
                     backend1_result = torch.from_numpy(backend1_result)
-                
+
                 if isinstance(backend2_result, cp.ndarray):
                     backend2_result = torch.from_numpy(cp.asnumpy(backend2_result))
                 elif not isinstance(backend2_result, torch.Tensor):
                     backend2_result = torch.from_numpy(backend2_result)
-                
+
                 # Ensure we're comparing the first image in the batch
                 if backend1_result.ndim == 4:
                     backend1_result = backend1_result[0]
                 if backend2_result.ndim == 4:
                     backend2_result = backend2_result[0]
-                
+
                 backend1_result = backend1_result.cpu().float()
                 backend2_result = backend2_result.cpu().float()
                 rel_error = calculate_relative_error(backend1_result, backend2_result, logger)
