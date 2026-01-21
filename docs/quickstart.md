@@ -72,14 +72,14 @@ normalizer = Reinhard(device="cpu")    # CPU fallback
 StainX automatically selects the best backend, but you can force a specific one:
 
 ```python
-# Automatic backend selection (CUDA if available, else PyTorch)
+# Automatic backend selection
 normalizer = Reinhard(device="cuda")
 
-# Force PyTorch backend (works on CPU, CUDA, and MPS)
+# Force specific backend
 normalizer = Reinhard(device="cuda", backend="torch")
-
-# Force CUDA backend (only works on CUDA devices)
-normalizer = Reinhard(device="cuda", backend="cuda")
+normalizer = Reinhard(device="cuda", backend="torch_cuda")
+normalizer = Reinhard(device="cuda", backend="cupy")
+normalizer = Reinhard(device="cuda", backend="cupy_cuda")
 ```
 
 ## Batch Processing

@@ -23,6 +23,7 @@ Enhanced stain normalization for histopathology images with batch processing sup
 
 - Python >=3.11
 - PyTorch >=2.0.0
+- CuPy >=12.0.0 (cupy-cuda12x>=12.0.0 for non-ARM64, cupy>=12.0.0 for ARM64)
 - CUDA (optional, for GPU acceleration)
 
 ### Install from PyPI
@@ -84,13 +85,15 @@ All normalizers follow a scikit-learn-like interface:
 ### Backend Selection
 
 Backends are automatically selected based on device availability:
-- **CUDA**: Used when CUDA is available and device is set to CUDA
-- **PyTorch**: Fallback backend, works on CPU and GPU
+- **torch_cuda**: Optimized CUDA extension when available
+- **cupy_cuda**: CuPy CUDA backend when available
+- **torch**: Fallback backend, works on CPU, CUDA, and MPS
 
 You can explicitly specify a backend:
 
 ```python
-normalizer = Reinhard(device="cuda", backend="torch")  # Force Torch backend
+normalizer = Reinhard(device="cuda", backend="torch")  # Force torch backend
+normalizer = Reinhard(device="cuda", backend="torch_cuda")  # Force torch_cuda backend
 ```
 
 ## Requirements

@@ -1,7 +1,7 @@
 # StainNormalizerBase
 
 ```python
-class StainNormalizerBase(ABC, nn.Module)
+class StainNormalizerBase(ABC)
 ```
 
 Base class for all normalizers. Abstract class - use `Reinhard`, `Macenko`, or `HistogramMatching`.

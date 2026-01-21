@@ -171,15 +171,15 @@ from stainx import Reinhard
 reference = torch.randn(1, 3, 512, 512, device="cuda")
 images = torch.randn(10, 3, 512, 512, device="cuda")
 
-# Use optimized CUDA kernels (if available)
-normalizer_cuda = Reinhard(device="cuda", backend="cuda")
-normalizer_cuda.fit(reference)
-normalized_cuda = normalizer_cuda.transform(images)
+# Use optimized CUDA backends (if available)
+normalizer_torch_cuda = Reinhard(device="cuda", backend="torch_cuda")
+normalizer_torch_cuda.fit(reference)
+normalized_torch_cuda = normalizer_torch_cuda.transform(images)
 
-# Force PyTorch backend (works everywhere)
+# Force torch backend (works everywhere)
 normalizer_torch = Reinhard(device="cuda", backend="torch")
-normalizer_pytorch.fit(reference)
-normalized_pytorch = normalizer_pytorch.transform(images)
+normalizer_torch.fit(reference)
+normalized_torch = normalizer_torch.transform(images)
 ```
 
 ## Processing Different Image Sizes

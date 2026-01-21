@@ -24,4 +24,4 @@ All normalizers implement:
 
 **Parameters:**
 - `device` (str | torch.device | None): Device ("cpu", "cuda", or torch.device)
-- `backend` (str | None): Backend ("pytorch" or "cuda"). Auto-selects if None
+- `backend` (str | None): Backend ("torch", "torch_cuda", "cupy", or "cupy_cuda"). Auto-selects if None

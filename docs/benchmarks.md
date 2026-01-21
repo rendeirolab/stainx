@@ -40,7 +40,7 @@ print(f"Throughput: {batch_size * 1000 / elapsed_time:.2f} images/second")
 
 ## Comparing Backends
 
-Compare the performance of CUDA and PyTorch backends:
+Compare the performance of CUDA and torch backends:
 
 ```python
 import torch
@@ -52,29 +52,29 @@ batch_size = 64
 images = torch.randn(batch_size, 3, 512, 512, device=device)
 reference = torch.randn(1, 3, 512, 512, device=device)
 
-# CUDA backend (optimized kernels)
-normalizer_cuda = Reinhard(device=device, backend="cuda")
-normalizer_cuda.fit(reference)
+# torch_cuda backend (optimized kernels)
+normalizer_torch_cuda = Reinhard(device=device, backend="torch_cuda")
+normalizer_torch_cuda.fit(reference)
 
 torch.cuda.synchronize()
 start = time.time()
-result_cuda = normalizer_cuda.transform(images)
+result_torch_cuda = normalizer_torch_cuda.transform(images)
 torch.cuda.synchronize()
-time_cuda = (time.time() - start) * 1000
+time_torch_cuda = (time.time() - start) * 1000
 
-# PyTorch backend (fallback)
+# torch backend (fallback)
 normalizer_torch = Reinhard(device=device, backend="torch")
-normalizer_pytorch.fit(reference)
+normalizer_torch.fit(reference)
 
 torch.cuda.synchronize()
 start = time.time()
-result_pytorch = normalizer_pytorch.transform(images)
+result_torch = normalizer_torch.transform(images)
 torch.cuda.synchronize()
-time_pytorch = (time.time() - start) * 1000
+time_torch = (time.time() - start) * 1000
 
-speedup = time_pytorch / time_cuda
-print(f"CUDA backend: {time_cuda:.3f} ms")
-print(f"PyTorch backend: {time_pytorch:.3f} ms")
+speedup = time_torch / time_torch_cuda
+print(f"torch_cuda backend: {time_torch_cuda:.3f} ms")
+print(f"torch backend: {time_torch:.3f} ms")
 print(f"Speedup: {speedup:.2f}x")
 ```
 
@@ -197,14 +197,14 @@ for device in devices:
 
 Based on benchmarks run on NVIDIA RTX A6000:
 
-### Backend Speedup (CUDA vs PyTorch)
+### Backend Speedup (torch_cuda vs torch)
 
-- **Reinhard**: 5.3-5.4x faster with CUDA backend
-  - 256×256 images, batch 32: CUDA 0.72ms vs PyTorch 3.87ms
-  - 512×512 images, batch 64: CUDA 5.33ms vs PyTorch 28.40ms
-- **Macenko**: 4.6-7.3x faster with CUDA backend
-  - 256×256 images, batch 32: CUDA 12.51ms vs PyTorch 57.02ms
-  - 512×512 images, batch 64: CUDA 39.19ms vs PyTorch 286.96ms
+- **Reinhard**: 5.3-5.4x faster with torch_cuda backend
+  - 256×256 images, batch 32: torch_cuda 0.72ms vs torch 3.87ms
+  - 512×512 images, batch 64: torch_cuda 5.33ms vs torch 28.40ms
+- **Macenko**: 4.6-7.3x faster with torch_cuda backend
+  - 256×256 images, batch 32: torch_cuda 12.51ms vs torch 57.02ms
+  - 512×512 images, batch 64: torch_cuda 39.19ms vs torch 286.96ms
 
 ### Batch Size Impact
 
@@ -219,7 +219,7 @@ Throughput increases significantly with batch size (Reinhard, 256×256 images, C
 
 **Optimal batch size**: 64-128 images provides best throughput for most use cases.
 
-### Method Performance (CUDA backend, batch 32, 256×256)
+### Method Performance (torch_cuda backend, batch 32, 256×256)
 
 - **Reinhard**: ~0.75ms (~42,600 images/second)
 - **HistogramMatching**: ~8.36ms (~3,800 images/second)
@@ -228,7 +228,7 @@ Throughput increases significantly with batch size (Reinhard, 256×256 images, C
 ### Recommendations
 
 For best performance:
-- Use CUDA backend when available (especially for Reinhard and Macenko)
+- Use torch_cuda or cupy_cuda backends when available (especially for Reinhard and Macenko)
 - Process images in batches of 64-128 images
 - Use appropriate image sizes for your use case
 - Reinhard is fastest, followed by HistogramMatching, then Macenko

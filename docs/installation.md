@@ -4,6 +4,7 @@
 
 - Python >=3.11
 - PyTorch >=2.0.0
+- CuPy >=12.0.0 (cupy-cuda12x>=12.0.0 for non-ARM64, cupy>=12.0.0 for ARM64)
 - CUDA Toolkit (optional, for CUDA backend acceleration)
 - Apple Silicon with macOS (optional, for MPS acceleration)
 
@@ -43,17 +44,18 @@ print(f"Normalized {images.shape[0]} images successfully!")
 print(f"Output shape: {normalized.shape}")
 ```
 
-## Check CUDA Backend Availability
+## Check Backend Availability
 
-To check if the CUDA backend is available:
+To check if CUDA backends are available:
 
 ```python
-from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
+from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE as TORCH_CUDA_AVAILABLE
+from stainx.backends.cupy_cuda_backend import CUDA_AVAILABLE as CUPY_CUDA_AVAILABLE
 
-if CUDA_AVAILABLE:
-    print("CUDA backend is available!")
-else:
-    print("CUDA backend is not available. Using PyTorch backend.")
+if TORCH_CUDA_AVAILABLE:
+    print("Torch CUDA backend is available!")
+if CUPY_CUDA_AVAILABLE:
+    print("CuPy CUDA backend is available!")
 ```
 
 ## Development Installation
