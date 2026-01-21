@@ -5,17 +5,12 @@
 # See the LICENSE file for details.
 import torch
 
-try:
-    import stainx_cuda_torch
+import stainx_cuda_torch
 
-    # Check if functions are actually available, not just if package imports
-    CUDA_AVAILABLE = getattr(stainx_cuda_torch, "FUNCTIONS_AVAILABLE", False)
-    if not CUDA_AVAILABLE:
-        print("DEBUG: stainx_cuda_torch imported but FUNCTIONS_AVAILABLE=False - CUDA backend not available")
-except ImportError:
-    CUDA_AVAILABLE = False
-    stainx_cuda_torch = None
-    print("DEBUG: stainx_cuda_torch package could not be imported - CUDA backend not available")
+# Check if functions are actually available, not just if package imports
+CUDA_AVAILABLE = getattr(stainx_cuda_torch, "FUNCTIONS_AVAILABLE", False)
+if not CUDA_AVAILABLE:
+    print("DEBUG: stainx_cuda_torch imported but FUNCTIONS_AVAILABLE=False - CUDA backend not available")
 
 
 class TorchCUDABackendBase:

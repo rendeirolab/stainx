@@ -52,14 +52,11 @@ class NormalizerTemplate(StainNormalizerBase):
 
         # Try CUDA backend (Torch CUDA extension)
         if device_type == "cuda":
-            try:
-                from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
+            from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
 
-                # Check if Torch CUDA is available
-                if CUDA_AVAILABLE and torch.cuda.is_available():
-                    return "cuda"
-            except (ImportError, AttributeError):
-                pass
+            # Check if Torch CUDA is available
+            if CUDA_AVAILABLE and torch.cuda.is_available():
+                return "cuda"
 
         # Try CuPy backend
         if device_type == "cuda" and cp.cuda.is_available():
@@ -145,13 +142,10 @@ class NormalizerTemplate(StainNormalizerBase):
         # Try to use CUDA device if available
         device = self.device
         if device_type == "cuda":
-            try:
-                from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
+            from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
 
-                if CUDA_AVAILABLE and torch.cuda.is_available():
-                    device = torch.device("cuda")
-            except (ImportError, AttributeError):
-                pass
+            if CUDA_AVAILABLE and torch.cuda.is_available():
+                device = torch.device("cuda")
 
         # Use Torch backend for fitting (CUDA backends typically don't have fit methods)
         torch_class = self._get_torch_class()

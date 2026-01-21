@@ -12,21 +12,15 @@ import torch
 
 def _get_torch_device(device_str: str) -> Any | None:
     """Get Torch device if available."""
-    try:
-        return torch.device(device_str)
-    except (ValueError, RuntimeError):
-        return None
+    return torch.device(device_str)
 
 
 def _get_cupy_device(device_str: str) -> Any | None:
     """Get CuPy device if available."""
     if device_str != "cuda":
         return None
-    try:
-        if cp.cuda.is_available():
-            return cp.cuda.Device(0)
-    except (AttributeError, RuntimeError):
-        pass
+    if cp.cuda.is_available():
+        return cp.cuda.Device(0)
     return None
 
 

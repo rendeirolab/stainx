@@ -357,6 +357,19 @@ class MacenkoCupy(CupyBackendBase):
         super().__init__(device)
 
     @staticmethod
+    def _cond_cupy(x: cp.ndarray) -> cp.ndarray:
+        """Condition number with CuPy-version fallback (2-norm)."""
+        cond_fn = getattr(cp.linalg, "cond", None)
+        if cond_fn is not None:
+            return cond_fn(x)
+
+        # 2-norm cond(A) = sigma_max / sigma_min
+        s = cp.linalg.svd(x, compute_uv=False)
+        smax = s.max()
+        smin = s.min()
+        return cp.where(smin == 0, cp.array(cp.inf, dtype=s.dtype), smax / smin)
+
+    @staticmethod
     def _percentile_cupy(t: cp.ndarray, q: float) -> float:
         k = 1 + round(0.01 * float(q) * (t.size - 1))
         return float(cp.partition(t.flatten(), k - 1)[k - 1])
@@ -418,12 +431,9 @@ class MacenkoCupy(CupyBackendBase):
             use_fallback = True
 
         if not use_fallback and HE_source.shape[0] >= HE_source.shape[1]:
-            try:
-                cond_num = cp.linalg.cond(HE_source)
-                # Use fallback if condition number is too high (> 10)
-                if cond_num > 10.0:
-                    use_fallback = True
-            except Exception:
+            cond_num = self._cond_cupy(HE_source)
+            # Use fallback if condition number is too high (> 10)
+            if cond_num > 10.0:
                 use_fallback = True
 
         if use_fallback:
@@ -431,12 +441,7 @@ class MacenkoCupy(CupyBackendBase):
             HE_pinv = cp.linalg.pinv(HE_source)
             concentrations = cp.dot(HE_pinv, od_all)
         else:
-            try:
-                concentrations = cp.linalg.lstsq(HE_source, od_all, rcond=None)[0]
-            except Exception:
-                # Fallback to pseudoinverse
-                HE_pinv = cp.linalg.pinv(HE_source)
-                concentrations = cp.dot(HE_pinv, od_all)
+            concentrations = cp.linalg.lstsq(HE_source, od_all, rcond=None)[0]
 
         # Compute max concentrations
         max_conc_0 = self._percentile_cupy(concentrations[0, :], 99)
@@ -513,12 +518,9 @@ class MacenkoCupy(CupyBackendBase):
             use_fallback = True
 
         if not use_fallback and HE.shape[0] >= HE.shape[1]:
-            try:
-                cond_num = cp.linalg.cond(HE)
-                # Use fallback if condition number is too high (> 10)
-                if cond_num > 10.0:
-                    use_fallback = True
-            except Exception:
+            cond_num = self._cond_cupy(HE)
+            # Use fallback if condition number is too high (> 10)
+            if cond_num > 10.0:
                 use_fallback = True
 
         if use_fallback:
@@ -526,12 +528,7 @@ class MacenkoCupy(CupyBackendBase):
             HE_pinv = cp.linalg.pinv(HE)
             concentrations = cp.dot(HE_pinv, od_combined)
         else:
-            try:
-                concentrations = cp.linalg.lstsq(HE, od_combined, rcond=None)[0]
-            except Exception:
-                # Fallback to pseudoinverse
-                HE_pinv = cp.linalg.pinv(HE)
-                concentrations = cp.dot(HE_pinv, od_combined)
+            concentrations = cp.linalg.lstsq(HE, od_combined, rcond=None)[0]
 
         max_conc = cp.array([self._percentile_cupy(concentrations[0, :], 99), self._percentile_cupy(concentrations[1, :], 99)], dtype=cp.float32)
 

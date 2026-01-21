@@ -433,12 +433,9 @@ class MacenkoTorch(TorchBackendBase):
             use_fallback = True
 
         if not use_fallback and HE_source.shape[0] >= HE_source.shape[1]:
-            try:
-                cond_num = torch.linalg.cond(HE_source)
-                # Use fallback if condition number is too high (> 10)
-                if cond_num.item() > 10.0:
-                    use_fallback = True
-            except Exception:
+            cond_num = torch.linalg.cond(HE_source)
+            # Use fallback if condition number is too high (> 10)
+            if cond_num.item() > 10.0:
                 use_fallback = True
 
         if use_fallback:
@@ -446,12 +443,7 @@ class MacenkoTorch(TorchBackendBase):
             HE_pinv = torch.linalg.pinv(HE_source)
             concentrations = torch.matmul(HE_pinv, od_all)
         else:
-            try:
-                concentrations, _, _, _ = torch.linalg.lstsq(HE_source, od_all, rcond=None)
-            except RuntimeError:
-                # CUSOLVER error - fallback to pseudoinverse
-                HE_pinv = torch.linalg.pinv(HE_source)
-                concentrations = torch.matmul(HE_pinv, od_all)
+            concentrations, _, _, _ = torch.linalg.lstsq(HE_source, od_all, rcond=None)
 
         # Compute max concentrations
         max_conc_0 = self._percentile_torch(concentrations[0, :], 99)
@@ -531,12 +523,9 @@ class MacenkoTorch(TorchBackendBase):
             use_fallback = True
 
         if not use_fallback and HE.shape[0] >= HE.shape[1]:
-            try:
-                cond_num = torch.linalg.cond(HE)
-                # Use fallback if condition number is too high (> 10)
-                if cond_num.item() > 10.0:
-                    use_fallback = True
-            except Exception:
+            cond_num = torch.linalg.cond(HE)
+            # Use fallback if condition number is too high (> 10)
+            if cond_num.item() > 10.0:
                 use_fallback = True
 
         if use_fallback:
@@ -544,12 +533,7 @@ class MacenkoTorch(TorchBackendBase):
             HE_pinv = torch.linalg.pinv(HE)
             concentrations = torch.matmul(HE_pinv, od_combined)
         else:
-            try:
-                concentrations, _, _, _ = torch.linalg.lstsq(HE, od_combined, rcond=None)
-            except RuntimeError:
-                # CUSOLVER error - fallback to pseudoinverse
-                HE_pinv = torch.linalg.pinv(HE)
-                concentrations = torch.matmul(HE_pinv, od_combined)
+            concentrations, _, _, _ = torch.linalg.lstsq(HE, od_combined, rcond=None)
 
         max_conc = torch.tensor([self._percentile_torch(concentrations[0, :], 99), self._percentile_torch(concentrations[1, :], 99)], device=self.device, dtype=torch.float32)
 

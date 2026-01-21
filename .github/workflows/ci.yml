@@ -230,13 +230,9 @@ jobs:
       - name: Verify CUDA extension
         run: |
           uv run python -c "
-          try:
-              import stainx_cuda_torch
-              print(f'CUDA extension imported successfully')
-              print(f'Functions available: {getattr(stainx_cuda_torch, \"FUNCTIONS_AVAILABLE\", False)}')
-          except ImportError as e:
-              print(f'Failed to import CUDA extension: {e}')
-              exit(1)
+          import stainx_cuda_torch
+          print(f'CUDA extension imported successfully')
+          print(f'Functions available: {getattr(stainx_cuda_torch, \"FUNCTIONS_AVAILABLE\", False)}')
           "
 
       - name: Run CUDA tests
@@ -381,15 +377,12 @@ jobs:
           current = "$CURRENT_VERSION"
           pypi = "$PYPI_VERSION"
           
-          try:
-              if version.parse(current) > version.parse(pypi):
-                  print("greater")
-              elif version.parse(current) == version.parse(pypi):
-                  print("equal")
-              else:
-                  print("less")
-          except Exception as e:
-              print(f"error: {e}")
+          if version.parse(current) > version.parse(pypi):
+              print("greater")
+          elif version.parse(current) == version.parse(pypi):
+              print("equal")
+          else:
+              print("less")
           EOF
           )
           
