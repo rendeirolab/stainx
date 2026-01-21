@@ -4,16 +4,13 @@
 # This software is distributed under the terms of the GNU General Public License v3 (GPLv3).
 # See the LICENSE file for details.
 import os
-from importlib.metadata import PackageNotFoundError, version
-from pathlib import Path
+from importlib.metadata import version
 
 import torch
 
 
 def _get_version():
     """Get version from package metadata or pyproject.toml."""
-    import tomllib
-
     # Get version from installed package metadata first
     return version("stainx")
 
@@ -29,7 +26,7 @@ elif torch_lib_path not in os.environ["LD_LIBRARY_PATH"]:
 
 # Import the compiled CUDA extension if available
 FUNCTIONS_AVAILABLE = False
-from .stainx_cuda_torch import histogram_matching, macenko, reinhard
+from .stainx_cuda_torch import histogram_matching, macenko, reinhard  # noqa: E402
 
 if all(callable(f) for f in [histogram_matching, macenko, reinhard]):
     FUNCTIONS_AVAILABLE = True
