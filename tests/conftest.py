@@ -4,7 +4,15 @@
 # This software is distributed under the terms of the GNU General Public License v3 (GPLv3).
 # See the LICENSE file for details.
 
-import cupy as cp
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+try:
+    import cupy as cp  # type: ignore
+except Exception:
+    cp = None  # type: ignore[assignment]
 import pytest
 import torch
 
@@ -14,12 +22,27 @@ import torch
 # and in pytest hooks where pytest can handle exceptions properly.
 
 
-# Pytest hook to skip CuPy tests if CUDA is not available
-# We check PyTorch CUDA to avoid calling cp.cuda.is_available() which may raise
+# Ensure `src/` is importable regardless of test nesting depth
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_SRC_DIR = _REPO_ROOT / "src"
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+
+# Pytest hook to skip CuPy(-interface) tests if CUDA is not available
+# We check PyTorch CUDA to avoid calling `cp.cuda.is_available()` which may raise
 def pytest_collection_modifyitems(config, items):  # noqa: ARG001
-    """Skip CuPy tests if CUDA is not available."""
+    """Skip CuPy-interface tests when CuPy/CUDA is unavailable."""
     cupy_items = [item for item in items if "cupy" in item.nodeid.lower()]
-    if cupy_items and not torch.cuda.is_available():
+    if not cupy_items:
+        return
+
+    if cp is None:
+        for item in cupy_items:
+            item.add_marker(pytest.mark.skip(reason="CuPy is not installed"))
+        return
+
+    if not torch.cuda.is_available():
         for item in cupy_items:
             item.add_marker(pytest.mark.skip(reason="CUDA is not available"))
 
@@ -31,6 +54,9 @@ def pytest_runtest_setup(item):
     # Only process CuPy tests
     if "cupy" not in item.nodeid.lower():
         return
+
+    if cp is None:
+        pytest.skip("CuPy is not installed")
 
     # Check availability - this may raise CUDARuntimeError if driver is insufficient
     # If it raises, pytest will catch it during test setup
@@ -71,6 +97,8 @@ def temp_dir(tmp_path):
 def sample_images_cupy():
     # Check availability - may raise CUDARuntimeError if driver is insufficient
     # pytest will handle the exception and skip the test
+    if cp is None:
+        pytest.skip("CuPy is not installed")
     if not cp.cuda.is_available():
         pytest.skip("CuPy CUDA is not available")
     cp.random.seed(42)
@@ -81,6 +109,8 @@ def sample_images_cupy():
 def reference_images_cupy():
     # Check availability - may raise CUDARuntimeError if driver is insufficient
     # pytest will handle the exception and skip the test
+    if cp is None:
+        pytest.skip("CuPy is not installed")
     if not cp.cuda.is_available():
         pytest.skip("CuPy CUDA is not available")
     cp.random.seed(43)
@@ -91,6 +121,8 @@ def reference_images_cupy():
 def single_image_cupy():
     # Check availability - may raise CUDARuntimeError if driver is insufficient
     # pytest will handle the exception and skip the test
+    if cp is None:
+        pytest.skip("CuPy is not installed")
     if not cp.cuda.is_available():
         pytest.skip("CuPy CUDA is not available")
     cp.random.seed(44)
@@ -101,6 +133,8 @@ def single_image_cupy():
 def device_cupy():
     # Check availability - may raise CUDARuntimeError if driver is insufficient
     # pytest will handle the exception and skip the test
+    if cp is None:
+        pytest.skip("CuPy is not installed")
     if not cp.cuda.is_available():
         pytest.skip("CuPy CUDA is not available")
     # Create device - if this fails due to insufficient driver, pytest will handle it

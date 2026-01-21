@@ -4,10 +4,16 @@
 # This software is distributed under the terms of the GNU General Public License v3 (GPLv3).
 # See the LICENSE file for details.
 
-import os
-import sys
+"""Parity tests: **Torch CUDA extension backend** vs **Torch backend**.
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+What this file tests
+--------------------
+On a CUDA-capable system, compare:
+- `backend="cuda"` (custom CUDA extension via `stainx_cuda_torch`)
+- `backend="torch"` (Torch ops)
+
+for the same inputs and assert outputs match within tolerance.
+"""
 
 import pytest
 import torch
@@ -60,7 +66,6 @@ class TestCUDABackendComparisonTorch:
         result_cuda_cpu = result_cuda.squeeze(0).cpu().float()
 
         rel_abs_error = compute_relative_absolute_error_torch(result_cuda_cpu, result_torch_cpu)
-
         assert rel_abs_error < 0.01, f"CUDA vs Torch Reinhard relative absolute error too large: {rel_abs_error:.6f}, expected <0.01"
 
     def test_macenko_cuda_vs_torch(self, reference_image, source_image_torch, cuda_device):
@@ -78,16 +83,13 @@ class TestCUDABackendComparisonTorch:
         result_cuda_cpu = result_cuda.squeeze(0).cpu().float()
 
         rel_abs_error = compute_relative_absolute_error_torch(result_cuda_cpu, result_torch_cpu)
-
         assert rel_abs_error < 0.01, f"CUDA vs Torch Macenko relative absolute error too large: {rel_abs_error:.6f}, expected <0.01"
 
     @pytest.mark.parametrize("channel_axis", [1, -1, 3, -3])
     def test_histogram_matching_cuda_vs_torch(self, reference_image, source_image_torch, cuda_device, channel_axis):
         """Test CUDA backend vs Torch backend for histogram matching."""
-        # Create converter
         converter = ChannelFormatConverter(channel_axis=channel_axis)
 
-        # Prepare inputs
         ref_input = converter.prepare_for_normalizer(reference_image)
         src_input = converter.prepare_for_normalizer(source_image_torch)
 
@@ -104,7 +106,6 @@ class TestCUDABackendComparisonTorch:
         result_cuda_chw = converter.to_chw(result_cuda, squeeze_batch=True)
 
         rel_abs_error = compute_relative_absolute_error_torch(result_cuda_chw, result_torch_chw)
-
         assert rel_abs_error < 0.01, f"CUDA vs Torch histogram matching relative absolute error too large: {rel_abs_error:.6f}, expected <0.01 (channel_axis={channel_axis})"
 
 

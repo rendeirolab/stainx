@@ -4,10 +4,18 @@
 # This software is distributed under the terms of the GNU General Public License v3 (GPLv3).
 # See the LICENSE file for details.
 
-import os
-import sys
+"""Correctness tests for the **PyTorch (Torch ops) implementation**.
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+What this file tests
+--------------------
+- `Reinhard` output vs `torchstain` (Torch reference)
+- `Macenko` output vs `torchstain` (Torch reference)
+- `HistogramMatching` output vs `skimage.exposure.match_histograms`
+
+Scope
+-----
+This file targets the **Torch interface/backend** path (no custom CUDA extension).
+"""
 
 import pytest
 import torch
@@ -55,7 +63,6 @@ class TestTorchstainComparisonTorch:
         result_cpu = result.squeeze(0).cpu().float()
 
         rel_abs_error = compute_relative_absolute_error_torch(result_cpu, torchstain_tensor)
-
         assert rel_abs_error < 0.01, f"Relative absolute error too large: {rel_abs_error:.6f}, expected <0.01"
 
     def test_macenko_comparison(self, reference_image, source_image_torch, device_torch):  # noqa: ARG002
@@ -73,7 +80,6 @@ class TestTorchstainComparisonTorch:
         result_cpu = result.squeeze(0).cpu().float()
 
         rel_abs_error = compute_relative_absolute_error_torch(result_cpu, torchstain_tensor)
-
         assert rel_abs_error < 0.1, f"Macenko relative absolute error too large: {rel_abs_error:.6f}, expected <0.1"
 
     @pytest.mark.parametrize("channel_axis", [1, -1, 3, -3])
