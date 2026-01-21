@@ -12,6 +12,7 @@ from typing import Any
 
 import numpy as np
 import torch
+import cupy as cp
 from prettytable import PrettyTable
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -26,32 +27,66 @@ from utils import benchmark_operation, calculate_relative_error, calculate_speed
 logger = None
 
 
-def run_benchmark(method: str, reference_batch: torch.Tensor, source_batch: torch.Tensor, backend: str, warmup: int, runs: int, logger=None) -> dict[str, dict[str, Any]]:
+def convert_to_backend_format(data: np.ndarray, backend: str) -> Any:
+    """Convert numpy array to the appropriate backend format."""
+    if backend in ("torch", "torch_cuda"):
+        return torch.from_numpy(data).to("cuda" if backend == "torch_cuda" else "cpu")
+    elif backend in ("cupy", "cupy_cuda"):
+        return cp.asarray(data)
+    else:
+        return data
+
+
+def get_backend_device(backend: str):
+    """Get the appropriate device object for the backend."""
+    if backend in ("torch", "torch_cuda"):
+        return torch.device("cuda")
+    elif backend in ("cupy", "cupy_cuda"):
+        return cp.cuda.Device(0)
+    else:
+        return "cuda"
+
+
+def run_benchmark(method: str, reference_batch_np: np.ndarray, source_batch_np: np.ndarray, backend1: str, backend2: str, warmup: int, runs: int, logger=None) -> dict[str, dict[str, Any]]:
+    # Convert numpy arrays to backend-specific formats
+    reference_batch_backend1 = convert_to_backend_format(reference_batch_np, backend1)
+    source_batch_backend1 = convert_to_backend_format(source_batch_np, backend1)
+    reference_batch_backend2 = convert_to_backend_format(reference_batch_np, backend2)
+    source_batch_backend2 = convert_to_backend_format(source_batch_np, backend2)
+
+    # Get appropriate device objects for each backend
+    device1 = get_backend_device(backend1)
+    device2 = get_backend_device(backend2)
+
+    # Initialize normalizers with appropriate devices
     if method == "reinhard":
-        stainx_cuda_backend = Reinhard(device="cuda", backend=backend)
-        stainx_torch_cuda = Reinhard(device="cuda", backend="torch")
+        stainx_backend1 = Reinhard(device=device1, backend=backend1)
+        stainx_backend2 = Reinhard(device=device2, backend=backend2)
     elif method == "macenko":
-        stainx_cuda_backend = Macenko(device="cuda", backend=backend)
-        stainx_torch_cuda = Macenko(device="cuda", backend="torch")
+        stainx_backend1 = Macenko(device=device1, backend=backend1)
+        stainx_backend2 = Macenko(device=device2, backend=backend2)
     elif method == "histogram_matching":
-        stainx_cuda_backend = HistogramMatching(device="cuda", backend=backend)
-        stainx_torch_cuda = HistogramMatching(device="cuda", backend="torch")
+        stainx_backend1 = HistogramMatching(device=device1, backend=backend1)
+        stainx_backend2 = HistogramMatching(device=device2, backend=backend2)
     else:
         raise ValueError(f"Invalid method: {method}")
 
-    stainx_reference = reference_batch[:1]
+    # Fit with reference batch (first image)
+    stainx_reference1 = reference_batch_backend1[:1]
+    stainx_reference2 = reference_batch_backend2[:1]
 
-    stainx_cuda_backend.fit(stainx_reference)
-    stainx_torch_cuda.fit(stainx_reference)
+    stainx_backend1.fit(stainx_reference1)
+    stainx_backend2.fit(stainx_reference2)
 
-    stainx_cuda_backend_result = benchmark_operation(lambda: stainx_cuda_backend.transform(source_batch), warmup, runs, "cuda", logger)
-    stainx_torch_cuda_result = benchmark_operation(lambda: stainx_torch_cuda.transform(source_batch), warmup, runs, "cuda", logger)
+    # Benchmark transform operations
+    stainx_backend1_result = benchmark_operation(lambda: stainx_backend1.transform(source_batch_backend1), warmup, runs, "cuda", logger)
+    stainx_backend2_result = benchmark_operation(lambda: stainx_backend2.transform(source_batch_backend2), warmup, runs, "cuda", logger)
 
-    return {"cuda_backend": stainx_cuda_backend_result, "torch_cuda": stainx_torch_cuda_result}
+    return {"backend1": stainx_backend1_result, "backend2": stainx_backend2_result}
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Benchmark StainX CUDA backend against Torch CUDA device")
+    parser = argparse.ArgumentParser(description="Benchmark two StainX backends against each other")
     parser.add_argument("--method", type=str, required=True, choices=["reinhard", "macenko", "histogram_matching"], help="Normalization method to benchmark (reinhard, macenko, or histogram_matching)")
     parser.add_argument("--image-size", nargs="+", type=int, default=[16, 32, 64, 128, 256, 512], help="Image sizes to test (single number per size, creates square images: size x size)")
     parser.add_argument("--channels", type=int, default=3, help="Number of channels")
@@ -59,7 +94,8 @@ def main():
     parser.add_argument("--runs", type=int, default=100, help="Number of benchmark iterations")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--batch-size", nargs="+", type=int, default=[32, 64, 128, 256, 512], help="Batch sizes for images (can specify multiple)")
-    parser.add_argument("--backend", type=str, default="cuda", help="CUDA backend to use (e.g., 'cuda', 'cudnn')")
+    parser.add_argument("--backend1", type=str, default="torch_cuda", choices=["torch", "torch_cuda", "cupy", "cupy_cuda"], help="First backend to benchmark")
+    parser.add_argument("--backend2", type=str, default="torch", choices=["torch", "torch_cuda", "cupy", "cupy_cuda"], help="Second backend to benchmark")
     parser.add_argument("--plot-path", action="store_true", help="Generate and save the 3D speedup plot")
 
     args = parser.parse_args()
@@ -75,7 +111,8 @@ def main():
     logger = setup_logger(filename=os.path.join(os.path.dirname(__file__), "logs", f"stainx_backend_benchmark_{current_time}.log"), verbose=True)
 
     logger.info(f"Device: {torch.cuda.get_device_name(0)}")
-    logger.info(f"CUDA Backend: {args.backend}")
+    logger.info(f"Backend 1: {args.backend1}")
+    logger.info(f"Backend 2: {args.backend2}")
     logger.info(f"Batch sizes: {args.batch_size}")
     logger.info(f"Warmup runs: {args.warmup}, Benchmark runs: {args.runs}")
     logger.info("")
@@ -97,33 +134,59 @@ def main():
     for batch_idx, batch_size in enumerate(args.batch_size):
         result_table = PrettyTable()
         result_table.title = f"{method_name} Benchmark (CUDA, batch={batch_size})"
-        result_table.field_names = ["Image Size (HxW)", "CUDA Backend (img/s)", "Torch CUDA (img/s)", "Speedup", "Relative Error"]
+        result_table.field_names = ["Image Size (HxW)", f"{args.backend1} (img/s)", f"{args.backend2} (img/s)", "Speedup", "Relative Error"]
 
         for img_idx, (height, width) in enumerate(image_sizes):
             logger.info(f"[{current_test}/{total_tests}] Testing: batch={batch_size}, size={height}x{width}")
 
-            reference_batch = generate_batch(batch_size, height, width, args.channels, seed=args.seed, device=device)
-            source_batch = generate_batch(batch_size, height, width, args.channels, seed=args.seed + 1, device=device)
+            # Generate data as torch tensors first, then convert to numpy
+            reference_batch_torch = generate_batch(batch_size, height, width, args.channels, seed=args.seed, device=device)
+            source_batch_torch = generate_batch(batch_size, height, width, args.channels, seed=args.seed + 1, device=device)
+            
+            # Convert to numpy arrays
+            reference_batch_np = reference_batch_torch.cpu().numpy()
+            source_batch_np = source_batch_torch.cpu().numpy()
 
-            results = run_benchmark(args.method, reference_batch, source_batch, args.backend, args.warmup, args.runs, logger)
+            results = run_benchmark(args.method, reference_batch_np, source_batch_np, args.backend1, args.backend2, args.warmup, args.runs, logger)
 
-            cuda_backend_ips = batch_size * 1000 / results["cuda_backend"]["time_ms"] if results["cuda_backend"]["success"] and results["cuda_backend"]["time_ms"] > 0 else 0.0
-            torch_cuda_ips = batch_size * 1000 / results["torch_cuda"]["time_ms"] if results["torch_cuda"]["success"] and results["torch_cuda"]["time_ms"] > 0 else 0.0
+            backend1_ips = batch_size * 1000 / results["backend1"]["time_ms"] if results["backend1"]["success"] and results["backend1"]["time_ms"] > 0 else 0.0
+            backend2_ips = batch_size * 1000 / results["backend2"]["time_ms"] if results["backend2"]["success"] and results["backend2"]["time_ms"] > 0 else 0.0
 
-            speedup_numeric = cuda_backend_ips / torch_cuda_ips if torch_cuda_ips > 0 and torch_cuda_ips != float("inf") and cuda_backend_ips != float("inf") else 0.0
+            speedup_numeric = backend1_ips / backend2_ips if backend2_ips > 0 and backend2_ips != float("inf") and backend1_ips != float("inf") else 0.0
             speedup_matrix[batch_idx, img_idx] = speedup_numeric
 
-            speedup = calculate_speedup(torch_cuda_ips, cuda_backend_ips)
-            logger.info(f"[{current_test}/{total_tests}] Speedup: {speedup}")
+            speedup = calculate_speedup(backend2_ips, backend1_ips)
+            logger.info(f"[{current_test}/{total_tests}] Speedup ({args.backend1} vs {args.backend2}): {speedup}")
 
-            if results["cuda_backend"]["result"] is not None and results["torch_cuda"]["result"] is not None:
-                cuda_backend_result = results["cuda_backend"]["result"][0].cpu().float()
-                torch_cuda_result = results["torch_cuda"]["result"][0].cpu().float()
-                rel_error = calculate_relative_error(cuda_backend_result, torch_cuda_result, logger)
+            if results["backend1"]["result"] is not None and results["backend2"]["result"] is not None:
+                # Convert results to torch tensors for error calculation
+                backend1_result = results["backend1"]["result"][0]
+                backend2_result = results["backend2"]["result"][0]
+                
+                # Convert cupy arrays to numpy, then to torch if needed
+                if isinstance(backend1_result, cp.ndarray):
+                    backend1_result = torch.from_numpy(cp.asnumpy(backend1_result))
+                elif not isinstance(backend1_result, torch.Tensor):
+                    backend1_result = torch.from_numpy(backend1_result)
+                
+                if isinstance(backend2_result, cp.ndarray):
+                    backend2_result = torch.from_numpy(cp.asnumpy(backend2_result))
+                elif not isinstance(backend2_result, torch.Tensor):
+                    backend2_result = torch.from_numpy(backend2_result)
+                
+                # Ensure we're comparing the first image in the batch
+                if backend1_result.ndim == 4:
+                    backend1_result = backend1_result[0]
+                if backend2_result.ndim == 4:
+                    backend2_result = backend2_result[0]
+                
+                backend1_result = backend1_result.cpu().float()
+                backend2_result = backend2_result.cpu().float()
+                rel_error = calculate_relative_error(backend1_result, backend2_result, logger)
             else:
                 rel_error = float("inf")
 
-            result_table.add_row([f"{height}x{width}", f"{cuda_backend_ips:.0f}" if results["cuda_backend"]["success"] else "ERROR", f"{torch_cuda_ips:.0f}" if results["torch_cuda"]["success"] else "ERROR", speedup, f"{rel_error:.6f}" if rel_error != float("inf") else "N/A"])
+            result_table.add_row([f"{height}x{width}", f"{backend1_ips:.0f}" if results["backend1"]["success"] else "ERROR", f"{backend2_ips:.0f}" if results["backend2"]["success"] else "ERROR", speedup, f"{rel_error:.6f}" if rel_error != float("inf") else "N/A"])
             current_test += 1
 
         result_tables.append(result_table)
@@ -137,8 +200,10 @@ def main():
 
     if args.plot_path:
         logger.info("Generating 3D speedup plot...")
-        plot_3d_bars(z=speedup_matrix, x=np.array(args.image_size), y=np.array(args.batch_size), xlabel="Image Size (HxW)", ylabel="Batch Size", zlabel="Speedup (CUDA Backend / Torch CUDA)", label_fontsize=12, save_path=f"speedup_cuda_backend_vs_torch_plot_{method_name}_cuda_{current_time}.pdf", show=False)
-        logger.info(f"3D plot saved to: speedup_cuda_backend_vs_torch_plot_{method_name}_cuda_{current_time}.pdf")
+        plot_3d_bars(
+            z=speedup_matrix, x=np.array(args.image_size), y=np.array(args.batch_size), xlabel="Image Size (HxW)", ylabel="Batch Size", zlabel=f"Speedup ({args.backend1} / {args.backend2})", label_fontsize=12, save_path=f"speedup_{args.backend1}_vs_{args.backend2}_plot_{method_name}_cuda_{current_time}.pdf", show=False
+        )
+        logger.info(f"3D plot saved to: speedup_{args.backend1}_vs_{args.backend2}_plot_{method_name}_cuda_{current_time}.pdf")
 
     logger.info("Benchmark complete!")
 
