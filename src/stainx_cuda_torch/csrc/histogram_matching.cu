@@ -115,11 +115,15 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
     torch::Tensor output = torch::empty({N, C, H, W}, torch::TensorOptions().dtype(torch::kFloat32).device(input_images.device()));
 
     // Choose blocks per channel based on workload (kernel uses pixels_per_block=4096).
-    // Cap to avoid excessive temporary memory for very large images.
+    // Calculate required blocks to process all pixels.
+    // Note: Memory usage is C * blocks_per_channel * 256 * 4 bytes for partial_hist.
+    // For worst case (e.g., 3 channels, 65536 blocks): ~200 MB, which is acceptable.
     const int pixels_per_block = 4096;
     int blocks_per_channel     = (total_pixels_per_channel + pixels_per_block - 1) / pixels_per_block;
     if (blocks_per_channel < 1) blocks_per_channel = 1;
-    if (blocks_per_channel > 2048) blocks_per_channel = 2048;
+    // Removed cap: previous cap of 2048 was too restrictive and caused incorrect results
+    // for large inputs (only ~6% of pixels were processed). Memory usage is reasonable
+    // even without the cap.
 
     // Temporary buffers
     // partial_hist: [C, blocks_per_channel, 256] int32 (used as uint32)

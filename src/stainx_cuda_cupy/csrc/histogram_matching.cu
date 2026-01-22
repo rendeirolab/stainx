@@ -165,10 +165,14 @@ py::dict histogram_matching_cuda(py::object input_images_obj, py::object referen
     float* output_ptr = static_cast<float*>(output_mem);
 
     // Choose blocks per channel
+    // Note: Memory usage is C * blocks_per_channel * 256 * 4 bytes for partial_hist.
+    // For worst case (e.g., 3 channels, 65536 blocks): ~200 MB, which is acceptable.
     const int pixels_per_block = 4096;
     int blocks_per_channel = (total_pixels_per_channel + pixels_per_block - 1) / pixels_per_block;
     if (blocks_per_channel < 1) blocks_per_channel = 1;
-    if (blocks_per_channel > 2048) blocks_per_channel = 2048;
+    // Removed cap: previous cap of 2048 was too restrictive and caused incorrect results
+    // for large inputs (only ~6% of pixels were processed). Memory usage is reasonable
+    // even without the cap.
 
     // Allocate temporary buffers
     size_t partial_hist_size = C * blocks_per_channel * num_bins * sizeof(uint32_t);
