@@ -3,6 +3,7 @@
 #
 # This software is distributed under the terms of the GNU General Public License v3 (GPLv3).
 # See the LICENSE file for details.
+import importlib.util
 from typing import Any
 
 try:
@@ -29,6 +30,14 @@ class NormalizerTemplate(StainNormalizerBase):
             backend: Backend name ("torch", "torch_cuda", "cupy_cuda", "cupy"). If None, auto-selects.
         """
         super().__init__(device)
+        # Validate backend if explicitly requested
+        if backend in ("cupy", "cupy_cuda"):
+            if cp is None:
+                raise ImportError(f"Backend '{backend}' requires cupy to be installed. Install it with: pip install stainx[cupy]")
+            if backend == "cupy_cuda" and importlib.util.find_spec("stainx.backends.cupy_cuda_backend") is None:
+                raise ImportError(f"Backend '{backend}' requires cupy_cuda_backend module. Install cupy with: pip install stainx[cupy]")
+            if backend == "cupy" and importlib.util.find_spec("stainx.backends.cupy_backend") is None:
+                raise ImportError(f"Backend '{backend}' requires cupy_backend module. Install cupy with: pip install stainx[cupy]")
         self.backend = backend or self._select_backend()
         print(f"Backend selected: {self.backend}")
         self._backend_impl = None
@@ -50,7 +59,7 @@ class NormalizerTemplate(StainNormalizerBase):
             device_type = self.device.type
         elif isinstance(self.device, str):
             device_type = self.device
-        elif isinstance(self.device, cp.cuda.Device):
+        elif cp is not None and isinstance(self.device, cp.cuda.Device):
             device_type = "cuda"
 
         # Priority order (as requested): torch, then torch_cuda, then cupy_cuda, then cupy.
@@ -78,13 +87,14 @@ class NormalizerTemplate(StainNormalizerBase):
             return "torch_cuda"
 
         # 3) cupy_cuda if available
-        from stainx.backends.cupy_cuda_backend import CUDA_AVAILABLE as CUPY_CUDA_AVAILABLE
+        if cp is not None and importlib.util.find_spec("stainx.backends.cupy_cuda_backend") is not None:
+            from stainx.backends.cupy_cuda_backend import CUDA_AVAILABLE as CUPY_CUDA_AVAILABLE
 
-        if CUPY_CUDA_AVAILABLE and cp is not None and cp.cuda.is_available():
-            return "cupy_cuda"
+            if CUPY_CUDA_AVAILABLE and cp.cuda.is_available():
+                return "cupy_cuda"
 
-        # 4) cupy if available
-        if cp is not None and cp.cuda.is_available():
+        # 4) cupy if available (check both cupy package and backend module)
+        if cp is not None and importlib.util.find_spec("stainx.backends.cupy_backend") is not None and cp.cuda.is_available():
             return "cupy"
 
         # Fallback: torch
@@ -195,18 +205,23 @@ class NormalizerTemplate(StainNormalizerBase):
         Returns:
             CuPy backend implementation instance.
         """
+        if cp is None:
+            raise ImportError("CuPy is not installed. Install it with: pip install stainx[cupy]")
+        if importlib.util.find_spec("stainx.backends.cupy_backend") is None:
+            raise ImportError("CuPy backend module is not available. Install cupy with: pip install stainx[cupy]")
+
         # Get device type
         device_type = None
         if hasattr(self.device, "type"):
             device_type = self.device.type
         elif isinstance(self.device, str):
             device_type = self.device
-        elif cp is not None and isinstance(self.device, cp.cuda.Device):
+        elif isinstance(self.device, cp.cuda.Device):
             device_type = "cuda"
 
         # Try to use CUDA device if available
         device = self.device
-        if device_type == "cuda" and cp is not None and cp.cuda.is_available():
+        if device_type == "cuda" and cp.cuda.is_available():
             device = cp.cuda.Device(0)
 
         # Use CuPy backend for fitting

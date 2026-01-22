@@ -32,7 +32,7 @@ build:
 	fi
 	@echo "Creating virtual environment if not exists..."
 	@$(UV) venv .venv --seed
-	@$(UV) sync --dev
+	@$(UV) sync --all-groups
 	@echo "Building distribution packages with uv build..."
 	$(UV) build
 	@echo "Build complete! Artifacts are in dist/"
@@ -58,7 +58,7 @@ install-dev:
 		curl -LsSf https://astral.sh/uv/install.sh | sh; \
 	fi
 	@echo "Syncing uv environment with dev dependencies..."
-	$(UV) sync --dev
+	$(UV) sync --all-groups
 	@echo "Installing stainx in editable mode..."
 	$(UV) pip install -e .
 	@echo "Building CUDA extension in-place (if CUDA is available)..."

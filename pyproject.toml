@@ -5,8 +5,6 @@ requires = [
     "torch>=2.0.0",
     "ninja",
     "pybind11>=2.10.0",
-    "cupy-cuda12x>=12.0.0; platform_machine != 'arm64'",
-    "cupy>=12.0.0; platform_machine == 'arm64'",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -18,8 +16,6 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "torch>=2.0.0",
-    "cupy-cuda12x>=12.0.0; platform_machine != 'arm64'",
-    "cupy>=12.0.0; platform_machine == 'arm64'",
 ]
 authors = [
     { name = "Yimin Zheng", email = "yzheng@cemm.oeaw.ac.at"},
@@ -37,6 +33,12 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering",
     "Topic :: Software Development",
+]
+
+[project.optional-dependencies]
+cupy = [
+    "cupy-cuda12x>=12.0.0; platform_machine != 'arm64'",
+    "cupy>=12.0.0; platform_machine == 'arm64'",
 ]
 
 [tool.setuptools.package-data]
@@ -59,6 +61,8 @@ dev = [
     "ruff>=0.1.0",
     "ninja>=1.10.0",
     "pybind11>=2.10.0",
+    "cupy-cuda12x>=12.0.0; platform_machine != 'arm64'",
+    "cupy>=12.0.0; platform_machine == 'arm64'",
 ]
 benchmark = [
     "prettytable",
