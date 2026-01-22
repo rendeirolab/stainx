@@ -106,7 +106,7 @@ jobs:
         env:
           UV_CONCURRENT_DOWNLOADS: 50
         run: |
-          uv sync --all-groups
+          uv sync --group dev
 
       - name: Build CUDA extension (if CUDA available)
         run: |
@@ -150,7 +150,7 @@ jobs:
         env:
           UV_CONCURRENT_DOWNLOADS: 50
         run: |
-          uv sync --all-groups
+          uv sync --group dev
 
       - name: Check GPU availability
         id: check_gpu
@@ -277,7 +277,7 @@ jobs:
         env:
           UV_CONCURRENT_DOWNLOADS: 50
         run: |
-          uv sync --all-groups
+          uv sync --group dev
 
       - name: Build CUDA extension (if CUDA available)
         run: |

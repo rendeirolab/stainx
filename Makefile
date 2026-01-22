@@ -58,7 +58,7 @@ install-dev:
 		curl -LsSf https://astral.sh/uv/install.sh | sh; \
 	fi
 	@echo "Syncing uv environment with dev dependencies..."
-	$(UV) sync --all-groups
+	$(UV) sync --group dev
 	@echo "Installing stainx in editable mode..."
 	$(UV) pip install -e .
 	@echo "Building CUDA extension in-place (if CUDA is available)..."
