@@ -5,6 +5,7 @@
 # See the LICENSE file for details.
 
 """Build CUDA extension for stainx if CUDA is available."""
+# To build the extention: `python setup.py build_ext --inplace`
 
 import contextlib
 import os
