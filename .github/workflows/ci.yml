@@ -280,8 +280,16 @@ jobs:
           uv sync --group dev
 
       - name: Build CUDA extension (if CUDA available)
+        shell: pwsh
         run: |
-          uv run python setup.py build_ext --inplace || echo "CUDA extension build skipped (CUDA not available on runner)"
+          # Suppress numpy warnings on Windows Python 3.13 (MINGW-W64 experimental warnings)
+          $env:PYTHONWARNINGS = "ignore::RuntimeWarning"
+          $ErrorActionPreference = "Continue"
+          uv run python setup.py build_ext --inplace 2>&1 | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "CUDA extension build skipped (CUDA not available on runner)"
+            $LASTEXITCODE = 0  # Reset exit code so step doesn't fail
+          }
         continue-on-error: true
 
       - name: Run tests
@@ -292,7 +300,14 @@ jobs:
           if ($torchLibPath -and (Test-Path $torchLibPath)) {
             $env:PATH = "$torchLibPath;$env:PATH"
           }
+          # Suppress numpy warnings on Windows Python 3.13 (MINGW-W64 experimental warnings)
+          $env:PYTHONWARNINGS = "ignore::RuntimeWarning"
+          # Run pytest with explicit error handling
           uv run pytest tests/ -v --cov=src/stainx --cov-report=xml --cov-report=term-missing
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Pytest failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
