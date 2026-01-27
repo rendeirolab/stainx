@@ -126,6 +126,12 @@ class TorchBackendBase:
         # Convert to original dtype
         return result.to(original_dtype)
 
+
+class HistogramMatchingTorch(TorchBackendBase):
+    def __init__(self, device: str | torch.device | None = None, channel_axis: int = 1):
+        super().__init__(device)
+        self.channel_axis = channel_axis
+
     def compute_histogram_256_torch(self, channel: torch.Tensor) -> torch.Tensor:
         counts = torch.bincount(channel, minlength=256).float()
         return counts / (counts.sum() + 1e-8)
@@ -167,12 +173,6 @@ class TorchBackendBase:
         reference_histogram = ref_cdf[0]
 
         return ref_vals, ref_cdf, ref_histograms_256, reference_histogram
-
-
-class HistogramMatchingTorch(TorchBackendBase):
-    def __init__(self, device: str | torch.device | None = None, channel_axis: int = 1):
-        super().__init__(device)
-        self.channel_axis = channel_axis
 
     def _normalize_to_channels_first_torch(self, images: torch.Tensor) -> tuple[torch.Tensor, bool]:
         if self.channel_axis == -1 or (self.channel_axis == 3 and images.ndim == 4):

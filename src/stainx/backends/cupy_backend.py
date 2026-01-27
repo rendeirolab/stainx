@@ -129,13 +129,15 @@ class CupyBackendBase:
         # Convert to original dtype
         return result.astype(original_dtype)
 
+
+class HistogramMatchingCupy(CupyBackendBase):
+    def __init__(self, device: str | cp.cuda.Device | None = None, channel_axis: int = 1):
+        super().__init__(device)
+        self.channel_axis = channel_axis
+
     def compute_histogram_256_cupy(self, channel: cp.ndarray) -> cp.ndarray:
         counts = cp.bincount(channel, minlength=256).astype(cp.float32)
         return counts / (counts.sum() + 1e-8)
-
-    def _normalize_to_channels_first_cupy(self, images: cp.ndarray) -> tuple[cp.ndarray, bool]:
-        # Default implementation assumes channels-first
-        return images, False
 
     def compute_reference_histograms_cupy(self, images: cp.ndarray) -> tuple[list, list, list, cp.ndarray]:
         # Normalize to channels-first format for processing
@@ -173,12 +175,6 @@ class CupyBackendBase:
         reference_histogram = ref_cdf[0]
 
         return ref_vals, ref_cdf, ref_histograms_256, reference_histogram
-
-
-class HistogramMatchingCupy(CupyBackendBase):
-    def __init__(self, device: str | cp.cuda.Device | None = None, channel_axis: int = 1):
-        super().__init__(device)
-        self.channel_axis = channel_axis
 
     def _normalize_to_channels_first_cupy(self, images: cp.ndarray) -> tuple[cp.ndarray, bool]:
         if self.channel_axis == -1 or (self.channel_axis == 3 and images.ndim == 4):
