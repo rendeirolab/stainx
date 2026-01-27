@@ -63,6 +63,8 @@ dev = [
     "pybind11>=2.10.0",
     "cupy-cuda12x>=12.0.0; platform_machine != 'arm64'",
     "cupy>=12.0.0; platform_machine == 'arm64'",
+    "scipy>=1.14.1; python_version>='3.13'",  # Python 3.13 requires scipy 1.14.1+ for pre-built wheels
+    "scipy>=1.12.0,<1.13.0; python_version<'3.13'",  # Match benchmark group constraint for older Python versions
 ]
 # Benchmark dependencies require Python 3.12 due to imgui compatibility
 # Use: uv sync --group benchmark --python 3.12
@@ -78,7 +80,8 @@ benchmark = [
     "scikit-image",
     "matplotlib",
     "numpy<2.0.0",  # Constrain numpy for pandas 1.5.3 compatibility (from slideflow<3.0.0)
-    "scipy<1.13.0",  # Constrain scipy for lifelines compatibility (trapz was removed in 1.13.0)
+    "scipy>=1.14.1; python_version>='3.13'",  # Python 3.13 requires scipy 1.14.1+ for wheels
+    "scipy<1.13.0; python_version<'3.13'",  # Constrain scipy for lifelines compatibility (trapz was removed in 1.13.0)
 ]
 
 [tool.uv]
