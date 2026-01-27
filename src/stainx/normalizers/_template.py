@@ -162,7 +162,10 @@ class NormalizerTemplate(StainNormalizerBase):
 
         reference_params = self._get_reference_params()
         backend_impl = self._get_backend_impl()
-        return backend_impl.transform(images, *reference_params)
+        result = backend_impl.transform(images, *reference_params)
+        if hasattr(self, "normalize_to_0_1") and self.normalize_to_0_1:
+            result = result / 255.0
+        return result
 
     def _get_backend_for_computation_torch(self):
         """Get the best available Torch backend for computation.

@@ -9,6 +9,10 @@ from stainx.normalizers._template import NormalizerTemplate
 
 
 class Macenko(NormalizerTemplate):
+    def __init__(self, device: Any | None = None, backend: str | None = None, normalize_to_0_1: bool = False):
+        self.normalize_to_0_1 = normalize_to_0_1
+        super().__init__(device=device, backend=backend)
+
     def _init_algorithm_attributes(self):
         self._stain_matrix = None
         self._concentration_matrix = None
