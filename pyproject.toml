@@ -64,9 +64,11 @@ dev = [
     "cupy-cuda12x>=12.0.0; platform_machine != 'arm64'",
     "cupy>=12.0.0; platform_machine == 'arm64'",
 ]
+# Benchmark dependencies require Python 3.12 due to imgui compatibility
+# Use: uv sync --group benchmark --python 3.12
 benchmark = [
     "prettytable",
-    "slideflow",
+    "slideflow<3.0.0",
     "cucim",
     "torchvision",
     "llvmlite>=0.45.0",
@@ -75,8 +77,13 @@ benchmark = [
     "torchstain @ git+https://github.com/EIDOSLAB/torchstain.git@development",
     "scikit-image",
     "matplotlib",
-    "numpy",
+    "numpy<2.0.0",  # Constrain numpy for pandas 1.5.3 compatibility (from slideflow<3.0.0)
+    "scipy<1.13.0",  # Constrain scipy for lifelines compatibility (trapz was removed in 1.13.0)
 ]
+
+[tool.uv]
+# Benchmark dependencies require Python 3.12 due to imgui==2.0.0 compatibility
+# When syncing benchmarks, use: uv sync --group benchmark --python 3.12
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
