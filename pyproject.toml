@@ -37,8 +37,9 @@ classifiers = [
 
 [project.optional-dependencies]
 cupy = [
-    "cupy-cuda12x>=12.0.0; platform_machine != 'arm64'",
-    "cupy>=12.0.0; platform_machine == 'arm64'",
+    # CuPy dropped macOS support; keep optional for Linux/Windows only.
+    "cupy-cuda12x>=12.0.0; platform_system != 'Darwin' and platform_machine != 'arm64'",
+    "cupy>=12.0.0; platform_system != 'Darwin' and platform_machine == 'arm64'",
 ]
 
 [tool.setuptools.package-data]
@@ -61,8 +62,9 @@ dev = [
     "ruff>=0.1.0",
     "ninja>=1.10.0",
     "pybind11>=2.10.0",
-    "cupy-cuda12x>=12.0.0; platform_machine != 'arm64'",
-    "cupy>=12.0.0; platform_machine == 'arm64'",
+    # CuPy dropped macOS support; keep dev deps installable on macOS.
+    "cupy-cuda12x>=12.0.0; platform_system != 'Darwin' and platform_machine != 'arm64'",
+    "cupy>=12.0.0; platform_system != 'Darwin' and platform_machine == 'arm64'",
     "scipy>=1.14.1; python_version>='3.13'",  # Python 3.13 requires scipy 1.14.1+ for pre-built wheels
     "scipy>=1.12.0,<1.13.0; python_version<'3.13'",  # Match benchmark group constraint for older Python versions
 ]
@@ -106,6 +108,11 @@ markers = [
     "gpu: marks tests that require GPU",
     "cuda: marks tests that require CUDA",
 ]
+
+[tool.taskipy.tasks]
+test = "uv run --python 3.12 pytest -q"
+quality = "uv run --python 3.12 python scripts/sentrux_score.py . --exclude 'examples/**' --exclude 'benchmarks/**'"
+quality_gate = "uv run --python 3.12 python scripts/sentrux_score.py . --exclude 'examples/**' --exclude 'benchmarks/**' --min 9231"
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.

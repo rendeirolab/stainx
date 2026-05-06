@@ -17,7 +17,6 @@ Scope
 This file targets the **CuPy interface/backend** path (no custom CUDA extension).
 """
 
-import cupy as cp
 import numpy as np
 import pytest
 import torch
@@ -26,6 +25,8 @@ from torchstain.torch.normalizers import TorchMacenkoNormalizer, TorchReinhardNo
 
 from stainx import HistogramMatching, Macenko, Reinhard
 from stainx.utils import ChannelFormatConverter
+
+cp = pytest.importorskip("cupy")
 
 
 def compute_relative_absolute_error_cupy(x: cp.ndarray, y: cp.ndarray) -> float:

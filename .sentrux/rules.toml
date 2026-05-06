@@ -1,0 +1,20 @@
+[constraints]
+max_cycles = 0
+max_coupling = "B"
+max_cc = 25
+no_god_files = true
+
+[[layers]]
+name = "core"
+paths = ["src/core/*"]
+order = 0
+
+[[layers]]
+name = "app"
+paths = ["src/app/*"]
+order = 2
+
+[[boundaries]]
+from = "src/*"
+to = "src/*"
+reason = "App must not depend on core internals"

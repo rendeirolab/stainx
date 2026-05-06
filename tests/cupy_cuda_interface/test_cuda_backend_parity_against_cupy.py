@@ -15,11 +15,12 @@ On a CUDA-capable system, compare:
 for the same inputs and assert outputs match within tolerance.
 """
 
-import cupy as cp
 import pytest
 
 from stainx import HistogramMatching, Macenko, Reinhard
 from stainx.utils import ChannelFormatConverter
+
+cp = pytest.importorskip("cupy")
 
 
 def compute_relative_absolute_error_cupy(x: cp.ndarray, y: cp.ndarray) -> float:
