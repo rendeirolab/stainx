@@ -28,3 +28,4 @@ uv.lock
 benchmarks/logs/
 *.log
 src/stainx_cuda/*.so
+
