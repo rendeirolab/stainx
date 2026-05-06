@@ -38,17 +38,23 @@ def compute_relative_absolute_error_torch(x: torch.Tensor, y: torch.Tensor) -> f
 
 
 class TestTorchstainComparisonTorch:
+    @pytest.fixture(params=[(64, 64), (128, 128), (256, 256), (256, 512), (321, 199), (384, 256), (480, 640), (512, 512), (1024, 1024), (2048, 2048)])
+    def image_hw(self, request):
+        return request.param
+
     @pytest.fixture
-    def reference_image(self, device_torch):
+    def reference_image(self, device_torch, image_hw):
+        h, w = image_hw
         torch.manual_seed(42)
-        return (torch.rand(1, 3, 256, 256, device=device_torch) * 255).round().to(torch.uint8)
+        return (torch.rand(1, 3, h, w, device=device_torch) * 255).round().to(torch.uint8)
 
     @pytest.fixture
-    def source_image_torch(self, device_torch):
+    def source_image_torch(self, device_torch, image_hw):
+        h, w = image_hw
         torch.manual_seed(123)
-        return (torch.rand(1, 3, 256, 256, device=device_torch) * 255).round().to(torch.uint8)
+        return (torch.rand(1, 3, h, w, device=device_torch) * 255).round().to(torch.uint8)
 
-    def test_reinhard_comparison(self, reference_image, source_image_torch, device_torch):
+    def test_reinhard_comparison(self, reference_image, source_image_torch, device_torch, image_hw):
         ref_chw = reference_image.squeeze(0).cpu()
         src_chw = source_image_torch.squeeze(0).cpu()
 
@@ -63,9 +69,9 @@ class TestTorchstainComparisonTorch:
         result_cpu = result.squeeze(0).cpu().float()
 
         rel_abs_error = compute_relative_absolute_error_torch(result_cpu, torchstain_tensor)
-        assert rel_abs_error < 0.01, f"Relative absolute error too large: {rel_abs_error:.6f}, expected <0.01"
+        assert rel_abs_error < 0.01, f"Relative absolute error too large: {rel_abs_error:.6f}, expected <0.01 (hw={image_hw})"
 
-    def test_macenko_comparison(self, reference_image, source_image_torch, device_torch):  # noqa: ARG002
+    def test_macenko_comparison(self, reference_image, source_image_torch, device_torch, image_hw):  # noqa: ARG002
         ref_chw = reference_image.squeeze(0).cpu()
         src_chw = source_image_torch.squeeze(0).cpu()
 
@@ -80,10 +86,10 @@ class TestTorchstainComparisonTorch:
         result_cpu = result.squeeze(0).cpu().float()
 
         rel_abs_error = compute_relative_absolute_error_torch(result_cpu, torchstain_tensor)
-        assert rel_abs_error < 0.1, f"Macenko relative absolute error too large: {rel_abs_error:.6f}, expected <0.1"
+        assert rel_abs_error < 0.1, f"Macenko relative absolute error too large: {rel_abs_error:.6f}, expected <0.1 (hw={image_hw})"
 
     @pytest.mark.parametrize("channel_axis", [1, -1, 3, -3])
-    def test_histogram_matching_comparison(self, reference_image, source_image_torch, device_torch, channel_axis):
+    def test_histogram_matching_comparison(self, reference_image, source_image_torch, device_torch, channel_axis, image_hw):
         # Create converter for skimage (always uses channels-first for input)
         converter_skimage = ChannelFormatConverter(channel_axis=1)
 
@@ -113,8 +119,9 @@ class TestTorchstainComparisonTorch:
 
         rel_abs_error = compute_relative_absolute_error_torch(result_tensor_chw, skimage_tensor_chw)
 
-        # Use a more lenient threshold (5%) since implementations use different algorithms
-        assert rel_abs_error < 0.05, f"Histogram matching relative absolute error too large: {rel_abs_error:.6f}, expected <0.05 (channel_axis={channel_axis})"
+        # Implementations differ; on very small tiles histograms are coarse so agreement is looser.
+        max_rel_error = 0.09 if min(image_hw) <= 64 else 0.05
+        assert rel_abs_error < max_rel_error, f"Histogram matching relative absolute error too large: {rel_abs_error:.6f}, expected <{max_rel_error} (channel_axis={channel_axis}, hw={image_hw})"
 
 
 if __name__ == "__main__":
