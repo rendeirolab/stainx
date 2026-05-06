@@ -51,6 +51,7 @@ dev = [
     "ipykernel>=7.0.1",
     "mkdocs>=1.6.1",
     "mkdocstrings[python]>=0.24.0",
+    "mkdocs-material>=9.0.0",
     "taskipy>=1.14.1",
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
@@ -60,6 +61,7 @@ dev = [
     "prettytable>=3.0.0",
     "torchvision>=0.15.0",
     "ruff>=0.1.0",
+    "pymdown-extensions>=10.0.0",
     "ninja>=1.10.0",
     "pybind11>=2.10.0",
     # CuPy dropped macOS support; keep dev deps installable on macOS.
@@ -111,8 +113,6 @@ markers = [
 
 [tool.taskipy.tasks]
 test = "uv run --python 3.12 pytest -q"
-quality = "uv run --python 3.12 python scripts/sentrux_score.py . --exclude 'examples/**' --exclude 'benchmarks/**'"
-quality_gate = "uv run --python 3.12 python scripts/sentrux_score.py . --exclude 'examples/**' --exclude 'benchmarks/**' --min 9231"
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.

@@ -29,3 +29,6 @@ benchmarks/logs/
 *.log
 src/stainx_cuda/*.so
 
+# Local-only tooling (not part of the package)
+scripts/sentrux_score.py
+
