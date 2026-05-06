@@ -39,7 +39,11 @@ def compute_relative_absolute_error_cupy(x: cp.ndarray, y: cp.ndarray) -> float:
 def _cupy_cuda_available():
     """Safely check if CuPy CUDA is available."""
     try:
-        return cp.cuda.is_available()
+        if not cp.cuda.is_available():
+            return False
+        # Ensure NVRTC is actually usable (CuPy may import, but JIT can fail if libnvrtc is missing).
+        _ = (cp.random.rand(1) * 0.0).sum()
+        return True
     except Exception:
         return False
 
