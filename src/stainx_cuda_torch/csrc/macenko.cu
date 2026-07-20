@@ -7,8 +7,9 @@
 /*
  * Macenko normalization for CUDA tensors.
  *
- * Numerically mirrors MacenkoTorch / torchstain: CPU eigh, nearest-percentile
- * (kthvalue), and linalg.lstsq. Bulk OD/RGB math stays on the tensor device.
+ * Mirrors MacenkoTorch: bulk OD / That / recon stay on CUDA. Only the 3x3 OD
+ * covariance (plus eigh / lstsq) runs on CPU — CUDA float32 cov reductions
+ * diverge enough on near-degenerate spectra to flip the stain plane.
  */
 
 #include <torch/extension.h>
@@ -30,6 +31,15 @@ float percentile_nearest(const torch::Tensor& t, double q) {
     return std::get<0>(flat.kthvalue(k)).item<float>();
 }
 
+torch::Tensor cov_cpu(const torch::Tensor& od_filtered) {
+    auto x       = od_filtered.device().is_cuda() ? od_filtered.cpu() : od_filtered;
+    auto x_t     = x.transpose(0, 1);
+    auto centered = x_t - x_t.mean(/*dim=*/1, /*keepdim=*/true);
+    const int64_t n = x.size(0);
+    if (n <= 1) { return torch::zeros({3, 3}, x.options().device(torch::kCPU)); }
+    return torch::matmul(centered, centered.transpose(0, 1)) / static_cast<float>(n - 1);
+}
+
 torch::Tensor process_single_image(const torch::Tensor& od,  // (3, H, W) float, on CUDA
                                    const torch::Tensor& stain_matrix,
                                    const torch::Tensor& target_max_conc,
@@ -44,19 +54,9 @@ torch::Tensor process_single_image(const torch::Tensor& od,  // (3, H, W) float,
     auto od_filtered = od_reshaped.index({mask});
     if (od_filtered.size(0) < 3) { od_filtered = od_reshaped; }
 
-    auto od_filtered_T       = od_filtered.transpose(0, 1);
-    auto od_mean             = od_filtered_T.mean(/*dim=*/1, /*keepdim=*/true);
-    auto od_centered         = od_filtered_T - od_mean;
-    const int64_t num_pixels = od_filtered.size(0);
-    torch::Tensor cov;
-    if (num_pixels > 1) {
-        cov = torch::matmul(od_centered, od_centered.transpose(0, 1)) / static_cast<float>(num_pixels - 1);
-    } else {
-        cov = torch::zeros({3, 3}, od_centered.options());
-    }
-
-    // CPU eigh for torchstain parity (unstable 2D plane on CUDA syevd)
-    auto eigh_out = torch::linalg_eigh(cov.cpu());
+    // CPU float32 cov + eigh; eigenvectors return to CUDA for That / recon.
+    auto cov      = cov_cpu(od_filtered);
+    auto eigh_out = torch::linalg_eigh(cov);
     auto eigvecs  = std::get<1>(eigh_out).to(od.device()).index({Slice(), Slice(1, 3)});
 
     auto That = torch::matmul(od_filtered, eigvecs);

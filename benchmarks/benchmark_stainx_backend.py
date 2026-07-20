@@ -10,7 +10,6 @@ import sys
 from datetime import datetime
 from typing import Any
 
-import cupy as cp
 import numpy as np
 import torch
 from prettytable import PrettyTable
@@ -28,21 +27,19 @@ logger = None
 
 
 def convert_to_backend_format(data: np.ndarray, backend: str) -> Any:
-    """Convert numpy array to the appropriate backend format."""
-    if backend in ("torch", "torch_cuda"):
-        return torch.from_numpy(data).to("cuda" if backend == "torch_cuda" else "cpu")
-    if backend in ("cupy", "cupy_cuda"):
-        return cp.asarray(data)
-    return data
+    """Convert numpy array to a Torch tensor on the right device."""
+    if backend == "torch_cuda":
+        return torch.from_numpy(data).to("cuda")
+    if backend == "torch":
+        return torch.from_numpy(data).to("cuda")  # Torch ops still run on CUDA device for fair GPU timing
+    raise ValueError(f"Unsupported backend: {backend}")
 
 
 def get_backend_device(backend: str):
-    """Get the appropriate device object for the backend."""
+    """Get the Torch device for the backend."""
     if backend in ("torch", "torch_cuda"):
         return torch.device("cuda")
-    if backend in ("cupy", "cupy_cuda"):
-        return cp.cuda.Device(0)
-    return "cuda"
+    raise ValueError(f"Unsupported backend: {backend}")
 
 
 def run_benchmark(method: str, reference_batch_np: np.ndarray, source_batch_np: np.ndarray, backend1: str, backend2: str, warmup: int, runs: int, logger=None) -> dict[str, dict[str, Any]]:
@@ -92,8 +89,8 @@ def main():
     parser.add_argument("--runs", type=int, default=100, help="Number of benchmark iterations")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--batch-size", nargs="+", type=int, default=[32, 64, 128, 256, 512], help="Batch sizes for images (can specify multiple)")
-    parser.add_argument("--backend1", type=str, default="torch_cuda", choices=["torch", "torch_cuda", "cupy", "cupy_cuda"], help="First backend to benchmark")
-    parser.add_argument("--backend2", type=str, default="torch", choices=["torch", "torch_cuda", "cupy", "cupy_cuda"], help="Second backend to benchmark")
+    parser.add_argument("--backend1", type=str, default="torch_cuda", choices=["torch", "torch_cuda"], help="First backend to benchmark")
+    parser.add_argument("--backend2", type=str, default="torch", choices=["torch", "torch_cuda"], help="Second backend to benchmark")
     parser.add_argument("--plot-path", action="store_true", help="Generate and save the 3D speedup plot")
 
     args = parser.parse_args()
@@ -161,16 +158,10 @@ def main():
                 backend1_result = results["backend1"]["result"][0]
                 backend2_result = results["backend2"]["result"][0]
 
-                # Convert cupy arrays to numpy, then to torch if needed
-                if isinstance(backend1_result, cp.ndarray):
-                    backend1_result = torch.from_numpy(cp.asnumpy(backend1_result))
-                elif not isinstance(backend1_result, torch.Tensor):
-                    backend1_result = torch.from_numpy(backend1_result)
-
-                if isinstance(backend2_result, cp.ndarray):
-                    backend2_result = torch.from_numpy(cp.asnumpy(backend2_result))
-                elif not isinstance(backend2_result, torch.Tensor):
-                    backend2_result = torch.from_numpy(backend2_result)
+                if not isinstance(backend1_result, torch.Tensor):
+                    backend1_result = torch.as_tensor(backend1_result)
+                if not isinstance(backend2_result, torch.Tensor):
+                    backend2_result = torch.as_tensor(backend2_result)
 
                 # Ensure we're comparing the first image in the batch
                 if backend1_result.ndim == 4:

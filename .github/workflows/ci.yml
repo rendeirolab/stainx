@@ -107,10 +107,11 @@ jobs:
           UV_CONCURRENT_DOWNLOADS: 50
         run: |
           uv sync --group dev
+          uv pip install -e .
 
       - name: Build CUDA extension (if CUDA available)
         run: |
-          uv run python setup.py build_ext --inplace || echo "CUDA extension build skipped (CUDA not available on runner)"
+          uv run python setup.py build_ext --inplace || echo "CUDA extension build skipped; Torch backend only"
         continue-on-error: true
 
       - name: Run tests

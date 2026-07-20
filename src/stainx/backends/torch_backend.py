@@ -376,6 +376,22 @@ class MacenkoTorch(TorchBackendBase):
         device = a.device
         return torch.linalg.lstsq(a.cpu(), b.cpu(), rcond=None)[0].to(device)
 
+    @staticmethod
+    def _cov_torch(od_filtered: torch.Tensor) -> torch.Tensor:
+        """3x3 OD covariance in float32 on CPU.
+
+        Near-degenerate Macenko spectra amplify CUDA float32 reduction noise into
+        stain-plane flips. Forming cov on CPU matches torchstain; callers keep the
+        large GEMMs (That / recon) on the original device.
+        """
+        x = od_filtered if od_filtered.device.type == "cpu" else od_filtered.cpu()
+        x_t = x.T
+        centered = x_t - x_t.mean(dim=1, keepdim=True)
+        n = x.shape[0]
+        if n <= 1:
+            return torch.zeros((3, 3), dtype=x.dtype)
+        return torch.matmul(centered, centered.T) / (n - 1)
+
     def _process_single_image_torch(self, od: torch.Tensor, stain_matrix: torch.Tensor, target_max_conc: torch.Tensor, beta: float, alpha: float, Io: float, H: int, W: int) -> torch.Tensor:
         # Reshape to (H*W, 3)
         od_reshaped = od.permute(1, 2, 0).reshape(-1, 3)
@@ -389,15 +405,10 @@ class MacenkoTorch(TorchBackendBase):
         if od_filtered.shape[0] < 3:
             od_filtered = od_reshaped
 
-        # Compute covariance matrix efficiently
-        od_filtered_T = od_filtered.T  # (3, num_filtered)
-        od_mean = od_filtered_T.mean(dim=1, keepdim=True)
-        od_centered = od_filtered_T - od_mean
-        num_pixels = od_filtered.shape[0]
-        cov = torch.matmul(od_centered, od_centered.T) / (num_pixels - 1) if num_pixels > 1 else torch.zeros((3, 3), dtype=od_centered.dtype, device=od_centered.device)
-
+        # CPU float32 cov + eigh; eigenvectors return to od.device for the rest.
+        cov = self._cov_torch(od_filtered)
         _, eigvecs = self._eigh_torch(cov)
-        eigvecs = eigvecs[:, [1, 2]]
+        eigvecs = eigvecs[:, [1, 2]].to(od.device)
 
         That = torch.matmul(od_filtered, eigvecs)
         phi = torch.atan2(That[:, 1], That[:, 0])
@@ -447,7 +458,8 @@ class MacenkoTorch(TorchBackendBase):
 
     def compute_reference_stain_matrix_torch(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         images_float = self.normalize_to_float_torch(images)
-        images_float = images_float.to(self.device)
+        # Fit on CPU float32 so HE / maxC match torchstain (same cov constraint as transform).
+        images_float = images_float.to("cpu")
 
         _N, _C, _H, _W = images_float.shape
 
@@ -465,10 +477,7 @@ class MacenkoTorch(TorchBackendBase):
         mask = od_min >= 0.15
         od_for_cov = od_combined_T[mask]  # (num_pixels, 3)
 
-        # Compute covariance matrix
-        od_mean = od_for_cov.mean(dim=0, keepdim=True)
-        od_centered = od_for_cov - od_mean
-        cov = torch.matmul(od_centered.T, od_centered) / (od_for_cov.shape[0] - 1)
+        cov = self._cov_torch(od_for_cov)
 
         _eigvals, eigvecs = self._eigh_torch(cov)
 
@@ -497,9 +506,10 @@ class MacenkoTorch(TorchBackendBase):
 
         concentrations = self._lstsq_torch(HE, od_combined)
 
-        max_conc = torch.tensor([self._percentile_torch(concentrations[0, :], 99), self._percentile_torch(concentrations[1, :], 99)], device=self.device, dtype=torch.float32)
+        max_conc = torch.tensor([self._percentile_torch(concentrations[0, :], 99), self._percentile_torch(concentrations[1, :], 99)], dtype=torch.float32)
 
-        return stain_matrix, max_conc
+        out_device = torch.device(self.device) if not isinstance(self.device, torch.device) else self.device
+        return stain_matrix.to(out_device), max_conc.to(out_device)
 
     def transform(self, images: torch.Tensor, stain_matrix: torch.Tensor, target_max_conc: torch.Tensor) -> torch.Tensor:
         images = images.to(self.device, non_blocking=True)

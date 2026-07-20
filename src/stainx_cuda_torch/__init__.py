@@ -5,15 +5,17 @@
 # See the LICENSE file for details.
 import importlib.util
 import os
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
 import torch
 
 
 def _get_version():
     """Get version from package metadata or pyproject.toml."""
-    # Get version from installed package metadata first
-    return version("stainx")
+    try:
+        return version("stainx")
+    except PackageNotFoundError:
+        return "0.1.0"
 
 
 __version__ = _get_version()
@@ -25,15 +27,23 @@ if "LD_LIBRARY_PATH" not in os.environ:
 elif torch_lib_path not in os.environ["LD_LIBRARY_PATH"]:
     os.environ["LD_LIBRARY_PATH"] = f"{torch_lib_path}:{os.environ['LD_LIBRARY_PATH']}"
 
-# Import the compiled CUDA extension if available
+# Import the compiled CUDA extension if available and loadable
 FUNCTIONS_AVAILABLE = False
-if importlib.util.find_spec(f"{__name__}.stainx_cuda_torch") is not None:
-    from .stainx_cuda_torch import histogram_matching, macenko, reinhard
+histogram_matching = None
+macenko = None
+reinhard = None
 
-    if all(callable(f) for f in [histogram_matching, macenko, reinhard]):
-        FUNCTIONS_AVAILABLE = True
-        __all__ = ["FUNCTIONS_AVAILABLE", "histogram_matching", "macenko", "reinhard"]
-    else:
-        __all__ = ["FUNCTIONS_AVAILABLE"]
-else:
-    __all__ = ["FUNCTIONS_AVAILABLE"]
+if importlib.util.find_spec(f"{__name__}.stainx_cuda_torch") is not None:
+    try:
+        from .stainx_cuda_torch import histogram_matching, macenko, reinhard
+
+        if all(callable(f) for f in [histogram_matching, macenko, reinhard]):
+            FUNCTIONS_AVAILABLE = True
+    except Exception:
+        # Stale/incompatible .so (ABI mismatch) — fall back to Torch backend
+        histogram_matching = None
+        macenko = None
+        reinhard = None
+        FUNCTIONS_AVAILABLE = False
+
+__all__ = ["FUNCTIONS_AVAILABLE", "histogram_matching", "macenko", "reinhard"]

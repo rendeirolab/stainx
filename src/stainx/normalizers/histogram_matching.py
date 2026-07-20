@@ -29,45 +29,13 @@ class HistogramMatching(NormalizerTemplate):
 
         return HistogramMatchingTorch
 
-    def _get_cupy_class(self):
-        from stainx.backends.cupy_backend import HistogramMatchingCupy
-
-        return HistogramMatchingCupy
-
-    def _get_cupy_cuda_class(self):
-        from stainx.backends.cupy_cuda_backend import HistogramMatchingCuPyCUDA
-
-        return HistogramMatchingCuPyCUDA
-
-    def _get_backend_impl(self):
-        if self._backend_impl is None:
-            if self.backend == "torch_cuda":
-                cuda_class = self._get_torch_cuda_class()
-                self._backend_impl = cuda_class(self.device, channel_axis=self.channel_axis)
-            elif self.backend == "cupy_cuda":
-                cupy_cuda_class = self._get_cupy_cuda_class()
-                self._backend_impl = cupy_cuda_class(self.device, channel_axis=self.channel_axis)
-            elif self.backend == "cupy":
-                cupy_class = self._get_cupy_class()
-                self._backend_impl = cupy_class(self.device, channel_axis=self.channel_axis)
-            else:
-                torch_class = self._get_torch_class()
-                self._backend_impl = torch_class(self.device, channel_axis=self.channel_axis)
-        return self._backend_impl
-
     def _get_backend_kwargs(self) -> dict:
         """Provide channel_axis for backend initialization."""
         return {"channel_axis": self.channel_axis}
 
     def _compute_reference_params(self, images: Any) -> None:
-        from stainx.normalizers import _template
-
-        if _template.cp is not None and isinstance(images, _template.cp.ndarray):
-            backend = self._get_backend_for_computation_cupy()
-            (self._ref_vals, self._ref_cdf, self._ref_histograms_256, self._reference_histogram) = backend.compute_reference_histograms_cupy(images)
-        else:
-            backend = self._get_backend_for_computation_torch()
-            (self._ref_vals, self._ref_cdf, self._ref_histograms_256, self._reference_histogram) = backend.compute_reference_histograms_torch(images)
+        backend = self._get_backend_for_computation_torch()
+        (self._ref_vals, self._ref_cdf, self._ref_histograms_256, self._reference_histogram) = backend.compute_reference_histograms_torch(images)
 
     def _get_reference_params(self) -> tuple:
         if self._ref_histograms_256 is not None and len(self._ref_histograms_256) > 0:

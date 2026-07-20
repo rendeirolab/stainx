@@ -205,7 +205,7 @@ Based on benchmarks run on NVIDIA RTX A6000:
 - **Macenko**: ~1.0–1.1× with torch_cuda vs torch (ATen parity path; not custom kernels)
   - 256×256 images, batch 32: ~347 vs ~320 img/s (~1.09×)
   - 512×512 images, batch 64: ~107 vs ~104 img/s (~1.03×)
-  - Pure-CUDA Macenko kernels were removed; `cupy_cuda` uses the same CuPy Macenko path as `cupy`
+  - Pure-CUDA Macenko kernels were removed; Macenko `torch_cuda` uses an ATen parity path (~1× vs torch)
 
 ### Batch Size Impact
 

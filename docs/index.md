@@ -60,21 +60,24 @@ See the [Benchmarks](benchmarks.md) page for detailed performance benchmarks and
 
 ```bash
 pip install stainx
+# from source: make install
 ```
 
-CUDA extensions will be automatically built if CUDA is available. Requires PyTorch >=2.0.0 and CuPy >=12.0.0.
+CUDA extensions build automatically when CUDA/nvcc are available. Requires PyTorch >= 2.0.0 (Torch-only; CuPy is not used).
 
 ## Features
 
 - **Multiple algorithms**: Histogram Matching, Reinhard, and Macenko normalization
-- **Automatic backend selection**: torch, torch_cuda, cupy, or cupy_cuda backends
-- **Batch processing**: Enhanced normalization through efficient batch processing of multiple images
+- **Torch backends**: `torch` and optional `torch_cuda`
+- **Training transforms**: `StainNormalizerTransform` for DataLoader pipelines
+- **Batch processing**: Efficient multi-image normalization
 - **Flexible device support**: CPU, CUDA, MPS (Apple Silicon)
 
 ## Documentation
 
 - [Quick Start Guide](quickstart.md) - Get started in minutes
 - [Installation Guide](installation.md) - Detailed installation instructions
+- [Training](training.md) - DataLoader / training pipelines
 - [Examples](examples.md) - Usage examples and patterns
 - [Benchmarks](benchmarks.md) - Performance benchmarks and comparisons
 - [API Reference](api/index.md) - Complete API documentation

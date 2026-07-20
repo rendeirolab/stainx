@@ -3,23 +3,21 @@
 #
 # This software is distributed under the terms of the GNU General Public License v3 (GPLv3).
 # See the LICENSE file for details.
-import importlib.util
 from typing import Any
 
-try:
-    import cupy as cp
-except ImportError:
-    cp = None
 import torch
 
 from stainx.base import StainNormalizerBase
 
+_VALID_BACKENDS = frozenset({"torch", "torch_cuda"})
+
 
 class NormalizerTemplate(StainNormalizerBase):
-    """Template class for normalizers with backend selection.
+    """Template class for normalizers with Torch backend selection.
 
-    This class is backend-agnostic and can work with Torch, CuPy, or other backends.
-    Torch is used by default but can be replaced by other backends.
+    Backends:
+    - ``torch``: PyTorch ops on CPU / CUDA / MPS
+    - ``torch_cuda``: compiled CUDA extension (optional; falls back if unavailable)
     """
 
     def __init__(self, device: str | Any | None = None, backend: str | None = None):
@@ -27,92 +25,46 @@ class NormalizerTemplate(StainNormalizerBase):
 
         Args:
             device: Device specification (string or device-like object).
-            backend: Backend name ("torch", "torch_cuda", "cupy_cuda", "cupy"). If None, auto-selects.
+            backend: Backend name (``"torch"`` or ``"torch_cuda"``). If None, auto-selects.
         """
         super().__init__(device)
-        # Validate backend if explicitly requested
-        if backend in ("cupy", "cupy_cuda"):
-            if cp is None:
-                raise ImportError(f"Backend '{backend}' requires cupy to be installed. Install it with: pip install stainx[cupy]")
-            if backend == "cupy_cuda" and importlib.util.find_spec("stainx.backends.cupy_cuda_backend") is None:
-                raise ImportError(f"Backend '{backend}' requires cupy_cuda_backend module. Install cupy with: pip install stainx[cupy]")
-            if backend == "cupy" and importlib.util.find_spec("stainx.backends.cupy_backend") is None:
-                raise ImportError(f"Backend '{backend}' requires cupy_backend module. Install cupy with: pip install stainx[cupy]")
-        self.backend = backend or self._select_backend()
-        print(f"Backend selected: {self.backend}")
-        self._backend_impl = None
+        if backend is not None and backend not in _VALID_BACKENDS:
+            raise ValueError(f"Unsupported backend '{backend}'. Valid backends: {sorted(_VALID_BACKENDS)}")
+        if backend == "torch_cuda":
+            from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
 
+            if not CUDA_AVAILABLE:
+                raise ImportError("Backend 'torch_cuda' requires the stainx_cuda_torch extension. Rebuild with CUDA/nvcc or use backend='torch'.")
+        self.backend = backend or self._select_backend()
+        self._backend_impl = None
         self._init_algorithm_attributes()
 
     def _init_algorithm_attributes(self):
         """Initialize algorithm-specific attributes. Override in subclasses."""
 
     def _select_backend(self) -> str:
-        """Select the best available backend based on device and availability.
-
-        Returns:
-            Backend name string ("torch", "torch_cuda", "cupy_cuda", "cupy").
-        """
-        # Check device type (try to get type attribute if available)
+        """Select the best available backend based on device and availability."""
         device_type = None
         if hasattr(self.device, "type"):
             device_type = self.device.type
         elif isinstance(self.device, str):
-            device_type = self.device
-        elif cp is not None and isinstance(self.device, cp.cuda.Device):
-            device_type = "cuda"
+            device_type = self.device.split(":")[0]
 
-        # Priority order (as requested): torch, then torch_cuda, then cupy_cuda, then cupy.
-        #
-        # - "torch" works on CPU/CUDA/MPS depending on torch + device.
-        # - "torch_cuda" requires Torch CUDA extension + CUDA.
-        # - "cupy_cuda" requires CUDA + CuPy (initially implemented via CuPy ops, later via extension).
-        # - "cupy" requires CUDA + CuPy (CuPy ops).
-
-        # 1) Prefer torch always (it's always available as a dependency).
         if device_type != "cuda":
             return "torch"
 
-        # For CUDA devices, try torch (generic) first.
-        # If the user wants the extension explicitly, they should pass backend="torch_cuda".
-        # Auto-selection still follows the requested priority list.
-        # We'll still consider torch_cuda/cupy_cuda/cupy after torch.
-        # (Returning torch here would prevent selecting the others automatically, so we only
-        # return torch immediately when CUDA isn't requested.)
-
-        # 2) torch_cuda (extension) if available
         from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE as TORCH_CUDA_AVAILABLE
 
         if TORCH_CUDA_AVAILABLE and torch.cuda.is_available():
             return "torch_cuda"
-
-        # 3) cupy_cuda if available
-        if cp is not None and importlib.util.find_spec("stainx.backends.cupy_cuda_backend") is not None:
-            from stainx.backends.cupy_cuda_backend import CUDA_AVAILABLE as CUPY_CUDA_AVAILABLE
-
-            if CUPY_CUDA_AVAILABLE and cp.cuda.is_available():
-                return "cupy_cuda"
-
-        # 4) cupy if available (check both cupy package and backend module)
-        if cp is not None and importlib.util.find_spec("stainx.backends.cupy_backend") is not None and cp.cuda.is_available():
-            return "cupy"
-
-        # Fallback: torch
         return "torch"
 
     def _get_backend_impl(self):
         if self._backend_impl is None:
-            if self.backend == "cupy_cuda":
-                cupy_cuda_class = self._get_cupy_cuda_class()
-                kwargs = self._get_backend_kwargs()
-                self._backend_impl = cupy_cuda_class(self.device, **kwargs)
-            elif self.backend == "torch_cuda":
+            if self.backend == "torch_cuda":
                 cuda_class = self._get_torch_cuda_class()
-                self._backend_impl = cuda_class(self.device)
-            elif self.backend == "cupy":
-                cupy_class = self._get_cupy_class()
                 kwargs = self._get_backend_kwargs()
-                self._backend_impl = cupy_class(self.device, **kwargs)
+                self._backend_impl = cuda_class(self.device, **kwargs)
             else:
                 torch_class = self._get_torch_class()
                 kwargs = self._get_backend_kwargs()
@@ -127,19 +79,11 @@ class NormalizerTemplate(StainNormalizerBase):
         """Get the Torch backend class. Override in subclasses."""
         raise NotImplementedError("Subclasses must implement _get_torch_class")
 
-    def _get_cupy_class(self):
-        """Get the CuPy backend class. Override in subclasses."""
-        raise NotImplementedError("Subclasses must implement _get_cupy_class")
-
-    def _get_cupy_cuda_class(self):
-        """Get the CuPy CUDA backend class. Override in subclasses."""
-        raise NotImplementedError("Subclasses must implement _get_cupy_cuda_class")
-
     def fit(self, images: Any) -> "NormalizerTemplate":
         """Fit the normalizer to reference images.
 
         Args:
-            images: Input images (tensor-like object from any backend).
+            images: Input images (torch.Tensor).
 
         Returns:
             Self for method chaining.
@@ -152,7 +96,7 @@ class NormalizerTemplate(StainNormalizerBase):
         """Transform images using the fitted normalizer.
 
         Args:
-            images: Input images (tensor-like object from any backend).
+            images: Input images (torch.Tensor).
 
         Returns:
             Normalized images (same type as input).
@@ -168,87 +112,29 @@ class NormalizerTemplate(StainNormalizerBase):
         return result
 
     def _get_backend_for_computation_torch(self):
-        """Get the best available Torch backend for computation.
-
-        This method is used for fitting operations that may need a specific backend.
-        By default, uses Torch backend for fitting (CUDA backends typically don't have fit methods).
-
-        Returns:
-            Torch backend implementation instance.
-        """
-        # Get device type
+        """Get a Torch backend instance for fit-time computation."""
         device_type = None
         if hasattr(self.device, "type"):
             device_type = self.device.type
         elif isinstance(self.device, str):
-            device_type = self.device
-        elif cp is not None and isinstance(self.device, cp.cuda.Device):
-            device_type = "cuda"
+            device_type = self.device.split(":")[0]
 
-        # Try to use CUDA device if available
         device = self.device
-        if device_type == "cuda":
-            from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
+        if device_type == "cuda" and torch.cuda.is_available():
+            device = torch.device("cuda")
 
-            if CUDA_AVAILABLE and torch.cuda.is_available():
-                device = torch.device("cuda")
-
-        # Use Torch backend for fitting (CUDA backends typically don't have fit methods)
         torch_class = self._get_torch_class()
-        # Allow subclasses to override this to pass extra kwargs (e.g., channel_axis)
         kwargs = self._get_backend_kwargs()
         return torch_class(device, **kwargs)
-
-    def _get_backend_for_computation_cupy(self):
-        """Get the best available CuPy backend for computation.
-
-        This method is used for fitting operations that may need a specific backend.
-        By default, uses CuPy backend for fitting.
-
-        Returns:
-            CuPy backend implementation instance.
-        """
-        if cp is None:
-            raise ImportError("CuPy is not installed. Install it with: pip install stainx[cupy]")
-        if importlib.util.find_spec("stainx.backends.cupy_backend") is None:
-            raise ImportError("CuPy backend module is not available. Install cupy with: pip install stainx[cupy]")
-
-        # Get device type
-        device_type = None
-        if hasattr(self.device, "type"):
-            device_type = self.device.type
-        elif isinstance(self.device, str):
-            device_type = self.device
-        elif isinstance(self.device, cp.cuda.Device):
-            device_type = "cuda"
-
-        # Try to use CUDA device if available
-        device = self.device
-        if device_type == "cuda" and cp.cuda.is_available():
-            device = cp.cuda.Device(0)
-
-        # Use CuPy backend for fitting
-        cupy_class = self._get_cupy_class()
-        # Allow subclasses to override this to pass extra kwargs (e.g., channel_axis)
-        kwargs = self._get_backend_kwargs()
-        return cupy_class(device, **kwargs)
 
     def _get_backend_kwargs(self) -> dict:
         """Override in subclasses to provide extra kwargs for backend initialization."""
         return {}
 
     def _compute_reference_params(self, images: Any) -> None:
-        """Compute reference parameters from images. Override in subclasses.
-
-        Args:
-            images: Input images (tensor-like object from any backend).
-        """
+        """Compute reference parameters from images. Override in subclasses."""
         raise NotImplementedError("Subclasses must implement _compute_reference_params")
 
     def _get_reference_params(self) -> tuple:
-        """Get reference parameters for transformation. Override in subclasses.
-
-        Returns:
-            Tuple of reference parameters.
-        """
+        """Get reference parameters for transformation. Override in subclasses."""
         raise NotImplementedError("Subclasses must implement _get_reference_params")

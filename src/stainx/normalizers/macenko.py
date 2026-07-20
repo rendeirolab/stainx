@@ -28,25 +28,9 @@ class Macenko(NormalizerTemplate):
 
         return MacenkoTorch
 
-    def _get_cupy_class(self):
-        from stainx.backends.cupy_backend import MacenkoCupy
-
-        return MacenkoCupy
-
-    def _get_cupy_cuda_class(self):
-        from stainx.backends.cupy_cuda_backend import MacenkoCuPyCUDA
-
-        return MacenkoCuPyCUDA
-
     def _compute_reference_params(self, images: Any) -> None:
-        from stainx.normalizers import _template
-
-        if _template.cp is not None and isinstance(images, _template.cp.ndarray):
-            backend = self._get_backend_for_computation_cupy()
-            self._stain_matrix, self._target_max_conc = backend.compute_reference_stain_matrix_cupy(images)
-        else:
-            backend = self._get_backend_for_computation_torch()
-            self._stain_matrix, self._target_max_conc = backend.compute_reference_stain_matrix_torch(images)
+        backend = self._get_backend_for_computation_torch()
+        self._stain_matrix, self._target_max_conc = backend.compute_reference_stain_matrix_torch(images)
         self._concentration_matrix = None
 
     def _get_reference_params(self) -> tuple:

@@ -1,5 +1,5 @@
 site_name: StainX Documentation
-site_description: Enhanced stain normalization for histopathology images with batch processing support. Optimized for CPU, GPU (CUDA), and MPS (Apple Silicon) devices.
+site_description: Torch-first stain normalization for histopathology with training transforms and optional CUDA kernels.
 site_url: https://stainx.readthedocs.io/
 
 repo_name: rendeirolab/stainx
@@ -50,6 +50,7 @@ nav:
   - Home: index.md
   - Installation: installation.md
   - Quick Start: quickstart.md
+  - Training: training.md
   - Examples: examples.md
   - Benchmarks: benchmarks.md
   - Correctness Report: correctness_report.md
