@@ -36,14 +36,14 @@ Near-degenerate top eigenvalues (common on random uint8 tiles) made CUDA `eigh` 
 
 ### 4. CUDA gels / histogram Macenko (torch_cuda)
 
-The old pure-CUDA Macenko path (histogram percentiles + SVD/`gels`) diverged from torchstain on transform even when HE/maxC looked fine. That kernel file was **removed**. Shipping `torch_cuda` Macenko is an **ATen parity path** in [`src/stainx_cuda_torch/csrc/macenko.cu`](../src/stainx_cuda_torch/csrc/macenko.cu): `kthvalue`, CPU `eigh`, CPU `lstsq`.
+The old pure-CUDA Macenko path (histogram percentiles + SVD/`gels`) diverged from torchstain on transform even when HE/maxC looked fine. That kernel file was **removed**. Shipping `torch_cuda` Macenko is an **ATen parity path** in `src/stainx_cuda_torch/csrc/macenko.cu`: `kthvalue`, CPU `eigh`, CPU `lstsq`.
 
 ## Test / process changes
 
 - Macenko oracle tolerance tightened: `0.1` → `0.01` (torch + cupy).
 - Intermediate asserts: HE matrix and maxC vs torchstain after `fit`.
 - Assert RGB can exceed 240 when torchstain does (guards against OD-clamp regressions).
-- CUDA Macenko Io-cap spot-check folded into [`tests/torch_cuda_interface/test_cuda_backend_parity_against_torch.py`](../tests/torch_cuda_interface/test_cuda_backend_parity_against_torch.py).
+- CUDA Macenko Io-cap spot-check folded into `tests/torch_cuda_interface/test_cuda_backend_parity_against_torch.py`.
 - **torchstain pinned to `==1.4.1`** in both `dev` and `benchmark` dependency groups.
 
 ## Backend matrix
