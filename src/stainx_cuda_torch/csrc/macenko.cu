@@ -32,9 +32,9 @@ float percentile_nearest(const torch::Tensor& t, double q) {
 }
 
 torch::Tensor cov_cpu(const torch::Tensor& od_filtered) {
-    auto x       = od_filtered.device().is_cuda() ? od_filtered.cpu() : od_filtered;
-    auto x_t     = x.transpose(0, 1);
-    auto centered = x_t - x_t.mean(/*dim=*/1, /*keepdim=*/true);
+    auto x          = od_filtered.device().is_cuda() ? od_filtered.cpu() : od_filtered;
+    auto x_t        = x.transpose(0, 1);
+    auto centered   = x_t - x_t.mean(/*dim=*/1, /*keepdim=*/true);
     const int64_t n = x.size(0);
     if (n <= 1) { return torch::zeros({3, 3}, x.options().device(torch::kCPU)); }
     return torch::matmul(centered, centered.transpose(0, 1)) / static_cast<float>(n - 1);

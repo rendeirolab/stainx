@@ -18,11 +18,7 @@ from stainx.utils import ChannelFormatConverter, get_device
 MethodName = Literal["macenko", "reinhard", "histogram_matching"]
 ModeName = Literal["reference", "batch"]
 
-_METHOD_MAP = {
-    "macenko": Macenko,
-    "reinhard": Reinhard,
-    "histogram_matching": HistogramMatching,
-}
+_METHOD_MAP = {"macenko": Macenko, "reinhard": Reinhard, "histogram_matching": HistogramMatching}
 
 
 class StainNormalizerTransform(nn.Module):
@@ -40,19 +36,7 @@ class StainNormalizerTransform(nn.Module):
         reproducible supervised training because statistics change every step.
     """
 
-    def __init__(
-        self,
-        method: MethodName | Any = "macenko",
-        *,
-        mode: ModeName = "reference",
-        reference: torch.Tensor | None = None,
-        device: str | torch.device | None = None,
-        backend: str | None = None,
-        channel_axis: int = 1,
-        batch_ref_index: int = 0,
-        normalize_to_0_1: bool = False,
-        normalizer: Any | None = None,
-    ):
+    def __init__(self, method: MethodName | Any = "macenko", *, mode: ModeName = "reference", reference: torch.Tensor | None = None, device: str | torch.device | None = None, backend: str | None = None, channel_axis: int = 1, batch_ref_index: int = 0, normalize_to_0_1: bool = False, normalizer: Any | None = None):
         """
         Args:
             method: Algorithm name, or a constructed normalizer instance when ``normalizer`` is not passed.
