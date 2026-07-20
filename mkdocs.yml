@@ -52,6 +52,7 @@ nav:
   - Quick Start: quickstart.md
   - Examples: examples.md
   - Benchmarks: benchmarks.md
+  - Correctness Report: correctness_report.md
   - API Reference:
     - API Overview: api/index.md
     - Normalizers:

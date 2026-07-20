@@ -4,6 +4,8 @@
 # This software is distributed under the terms of the GNU General Public License v3 (GPLv3).
 # See the LICENSE file for details.
 import cupy as cp
+import numpy as np
+import torch
 
 
 class CupyBackendBase:
@@ -353,22 +355,17 @@ class MacenkoCupy(CupyBackendBase):
         super().__init__(device)
 
     @staticmethod
-    def _cond_cupy(x: cp.ndarray) -> cp.ndarray:
-        """Condition number with CuPy-version fallback (2-norm)."""
-        cond_fn = getattr(cp.linalg, "cond", None)
-        if cond_fn is not None:
-            return cond_fn(x)
-
-        # 2-norm cond(A) = sigma_max / sigma_min
-        s = cp.linalg.svd(x, compute_uv=False)
-        smax = s.max()
-        smin = s.min()
-        return cp.where(smin == 0, cp.array(cp.inf, dtype=s.dtype), smax / smin)
-
-    @staticmethod
     def _percentile_cupy(t: cp.ndarray, q: float) -> float:
         k = 1 + round(0.01 * float(q) * (t.size - 1))
         return float(cp.partition(t.flatten(), k - 1)[k - 1])
+
+    @staticmethod
+    def _lstsq_cupy(a: cp.ndarray, b: cp.ndarray) -> cp.ndarray:
+        # CPU lstsq for torchstain / MacenkoTorch parity (CUDA gels can diverge).
+        a_np = np.asarray(cp.asnumpy(a), dtype=np.float32)
+        b_np = np.asarray(cp.asnumpy(b), dtype=np.float32)
+        sol = torch.linalg.lstsq(torch.from_numpy(a_np), torch.from_numpy(b_np), rcond=None)[0]
+        return cp.asarray(sol.numpy())
 
     def _process_single_image_cupy(self, od: cp.ndarray, stain_matrix: cp.ndarray, target_max_conc: cp.ndarray, beta: float, alpha: float, Io: float, H: int, W: int) -> cp.ndarray:
         # Reshape to (H*W, 3)
@@ -390,8 +387,8 @@ class MacenkoCupy(CupyBackendBase):
         num_pixels = od_filtered.shape[0]
         cov = cp.dot(od_centered, od_centered.T) / (num_pixels - 1) if num_pixels > 1 else cp.zeros((3, 3), dtype=od_centered.dtype)
 
-        _eigvals, eigvecs = cp.linalg.eigh(cov)
-        eigvecs = eigvecs[:, [1, 2]]
+        _eigvals, eigvecs_t = torch.linalg.eigh(torch.from_numpy(cp.asnumpy(cov)))
+        eigvecs = cp.asarray(eigvecs_t.numpy())[:, [1, 2]]
 
         That = cp.dot(od_filtered, eigvecs)
         phi = cp.arctan2(That[:, 1], That[:, 0])
@@ -420,24 +417,7 @@ class MacenkoCupy(CupyBackendBase):
         # Reshape OD for concentration computation
         od_all = od.reshape(3, -1)
 
-        # Check condition number and matrix size to decide on fallback
-        use_fallback = False
-        # Use fallback for very large right-hand side matrices
-        if od_all.shape[1] > 1000000:  # > 1M columns
-            use_fallback = True
-
-        if not use_fallback and HE_source.shape[0] >= HE_source.shape[1]:
-            cond_num = self._cond_cupy(HE_source)
-            # Use fallback if condition number is too high (> 10)
-            if cond_num > 10.0:
-                use_fallback = True
-
-        if use_fallback:
-            # Use pseudoinverse for ill-conditioned or large matrices (more robust)
-            HE_pinv = cp.linalg.pinv(HE_source)
-            concentrations = cp.dot(HE_pinv, od_all)
-        else:
-            concentrations = cp.linalg.lstsq(HE_source, od_all, rcond=None)[0]
+        concentrations = self._lstsq_cupy(HE_source, od_all)
 
         # Compute max concentrations
         max_conc_0 = self._percentile_cupy(concentrations[0, :], 99)
@@ -448,10 +428,7 @@ class MacenkoCupy(CupyBackendBase):
         norm_factor = target_max_conc / max_conc
         concentrations_norm = concentrations * norm_factor.reshape(-1, 1)
 
-        # Reconstruct OD
         od_recon = cp.dot(stain_matrix, concentrations_norm)
-        # Clamp negative OD values to 0 (OD must be >= 0)
-        od_recon = cp.clip(od_recon, 0.0, float("inf"))
 
         # Convert back to RGB
         rgb_recon = Io * cp.exp(-od_recon)
@@ -483,7 +460,8 @@ class MacenkoCupy(CupyBackendBase):
         od_centered = od_for_cov - od_mean
         cov = cp.dot(od_centered.T, od_centered) / (od_for_cov.shape[0] - 1)
 
-        _eigvals, eigvecs = cp.linalg.eigh(cov)
+        _eigvals, eigvecs_t = torch.linalg.eigh(torch.from_numpy(cp.asnumpy(cov)))
+        eigvecs = cp.asarray(eigvecs_t.numpy())
 
         stain_vectors = eigvecs[:, [1, 2]]
 
@@ -507,24 +485,7 @@ class MacenkoCupy(CupyBackendBase):
 
         stain_matrix = HE
 
-        # Check condition number and matrix size to decide on fallback
-        use_fallback = False
-        # Use fallback for very large right-hand side matrices
-        if od_combined.shape[1] > 1000000:  # > 1M columns
-            use_fallback = True
-
-        if not use_fallback and HE.shape[0] >= HE.shape[1]:
-            cond_num = self._cond_cupy(HE)
-            # Use fallback if condition number is too high (> 10)
-            if cond_num > 10.0:
-                use_fallback = True
-
-        if use_fallback:
-            # Use pseudoinverse for ill-conditioned or large matrices (more robust)
-            HE_pinv = cp.linalg.pinv(HE)
-            concentrations = cp.dot(HE_pinv, od_combined)
-        else:
-            concentrations = cp.linalg.lstsq(HE, od_combined, rcond=None)[0]
+        concentrations = self._lstsq_cupy(HE, od_combined)
 
         max_conc = cp.array([self._percentile_cupy(concentrations[0, :], 99), self._percentile_cupy(concentrations[1, :], 99)], dtype=cp.float32)
 

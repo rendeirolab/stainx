@@ -9,7 +9,7 @@
 What this file tests
 --------------------
 On a CUDA-capable system, compare:
-- `backend="cupy_cuda"` (custom CUDA extension via `stainx_cuda_cupy`)
+- `backend="cupy_cuda"` (CUDA device enforced; currently inherits CuPy ops)
 - `backend="cupy"` (CuPy ops)
 
 for the same inputs and assert outputs match within tolerance.

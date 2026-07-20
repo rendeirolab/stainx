@@ -111,8 +111,14 @@ class TestTorchstainComparisonCupy:
         result_cpu = cp.asnumpy(result.squeeze(0)).astype(np.float32)
         result_chw = result_cpu if result_cpu.ndim == 3 and result_cpu.shape[0] == 3 else np.transpose(result_cpu, (2, 0, 1)) if result_cpu.ndim == 3 else result_cpu
 
+        # HE/maxC should match torchstain after CPU eigh + CPU lstsq parity policy.
+        he = cp.asnumpy(normalizer._stain_matrix).astype(np.float32)
+        max_c = cp.asnumpy(normalizer._target_max_conc).astype(np.float32).reshape(-1)
+        assert np.allclose(he, torchstain_normalizer.HERef.cpu().numpy().astype(np.float32), atol=5e-3, rtol=5e-3), "Macenko HE matrix mismatch vs torchstain"
+        assert np.allclose(max_c, torchstain_normalizer.maxCRef.cpu().numpy().astype(np.float32).reshape(-1), atol=5e-2, rtol=5e-2), "Macenko maxC mismatch vs torchstain"
+
         rel_abs_error = compute_relative_absolute_error_cupy(cp.asarray(result_chw), cp.asarray(torchstain_chw))
-        assert rel_abs_error < 0.1, f"Macenko relative absolute error too large: {rel_abs_error:.6f}, expected <0.1"
+        assert rel_abs_error < 0.01, f"Macenko relative absolute error too large: {rel_abs_error:.6f}, expected <0.01"
 
     @pytest.mark.parametrize("channel_axis", [1, -1, 3, -3])
     def test_histogram_matching_comparison(self, reference_image, source_image_cupy, device_cupy, channel_axis):

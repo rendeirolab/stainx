@@ -361,19 +361,20 @@ class MacenkoTorch(TorchBackendBase):
         return t.view(-1).kthvalue(k).values.item()
 
     @staticmethod
-    def _eigh_with_mps_fallback_torch(cov: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        device = cov.device
-        # MPS doesn't support eigh, so move to CPU for computation
-        # TODO[Samir]: In the future, if this issue (https://github.com/pytorch/pytorch/issues/141287) is resolved, we can remove this fallback.
-        if device.type == "mps":
-            cov_cpu = cov.cpu()
-            eigvals, eigvecs = torch.linalg.eigh(cov_cpu)
-            # Move eigenvectors back to original device
-            eigvecs = eigvecs.to(device)
-            eigvals = eigvals.to(device)
-        else:
-            eigvals, eigvecs = torch.linalg.eigh(cov)
-        return eigvals, eigvecs
+    def _eigh_torch(cov: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        # CPU eigh: required for MPS, and matches torchstain when CUDA eigh is unstable.
+        if cov.device.type == "cpu":
+            return torch.linalg.eigh(cov)
+        eigvals, eigvecs = torch.linalg.eigh(cov.cpu())
+        return eigvals.to(cov.device), eigvecs.to(cov.device)
+
+    @staticmethod
+    def _lstsq_torch(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        # CPU lstsq for torchstain parity (CUDA gels can diverge on the same HE/OD).
+        if a.device.type == "cpu" and b.device.type == "cpu":
+            return torch.linalg.lstsq(a, b, rcond=None)[0]
+        device = a.device
+        return torch.linalg.lstsq(a.cpu(), b.cpu(), rcond=None)[0].to(device)
 
     def _process_single_image_torch(self, od: torch.Tensor, stain_matrix: torch.Tensor, target_max_conc: torch.Tensor, beta: float, alpha: float, Io: float, H: int, W: int) -> torch.Tensor:
         # Reshape to (H*W, 3)
@@ -395,7 +396,7 @@ class MacenkoTorch(TorchBackendBase):
         num_pixels = od_filtered.shape[0]
         cov = torch.matmul(od_centered, od_centered.T) / (num_pixels - 1) if num_pixels > 1 else torch.zeros((3, 3), dtype=od_centered.dtype, device=od_centered.device)
 
-        _, eigvecs = self._eigh_with_mps_fallback_torch(cov)
+        _, eigvecs = self._eigh_torch(cov)
         eigvecs = eigvecs[:, [1, 2]]
 
         That = torch.matmul(od_filtered, eigvecs)
@@ -425,25 +426,7 @@ class MacenkoTorch(TorchBackendBase):
         # Reshape OD for concentration computation
         od_all = od.reshape(3, -1)
 
-        # Check condition number and matrix size to decide on fallback
-        # CUSOLVER fails on ill-conditioned matrices and very large matrices
-        use_fallback = False
-        # Use fallback for very large right-hand side matrices (CUSOLVER has issues)
-        if od_all.shape[1] > 1000000:  # > 1M columns
-            use_fallback = True
-
-        if not use_fallback and HE_source.shape[0] >= HE_source.shape[1]:
-            cond_num = torch.linalg.cond(HE_source)
-            # Use fallback if condition number is too high (> 10)
-            if cond_num.item() > 10.0:
-                use_fallback = True
-
-        if use_fallback:
-            # Use pseudoinverse for ill-conditioned or large matrices (more robust)
-            HE_pinv = torch.linalg.pinv(HE_source)
-            concentrations = torch.matmul(HE_pinv, od_all)
-        else:
-            concentrations, _, _, _ = torch.linalg.lstsq(HE_source, od_all, rcond=None)
+        concentrations = self._lstsq_torch(HE_source, od_all)
 
         # Compute max concentrations
         max_conc_0 = self._percentile_torch(concentrations[0, :], 99)
@@ -454,10 +437,7 @@ class MacenkoTorch(TorchBackendBase):
         norm_factor = target_max_conc / max_conc
         concentrations_norm = concentrations * norm_factor.unsqueeze(-1)
 
-        # Reconstruct OD
         od_recon = torch.matmul(stain_matrix, concentrations_norm)
-        # Clamp negative OD values to 0 (OD must be >= 0)
-        od_recon = torch.clamp(od_recon, 0.0, float("inf"))
 
         # Convert back to RGB
         rgb_recon = Io * torch.exp(-od_recon)
@@ -490,7 +470,7 @@ class MacenkoTorch(TorchBackendBase):
         od_centered = od_for_cov - od_mean
         cov = torch.matmul(od_centered.T, od_centered) / (od_for_cov.shape[0] - 1)
 
-        _eigvals, eigvecs = self._eigh_with_mps_fallback_torch(cov)
+        _eigvals, eigvecs = self._eigh_torch(cov)
 
         stain_vectors = eigvecs[:, [1, 2]]
 
@@ -515,25 +495,7 @@ class MacenkoTorch(TorchBackendBase):
 
         stain_matrix = HE
 
-        # Check condition number and matrix size to decide on fallback
-        # CUSOLVER fails on ill-conditioned matrices and very large matrices
-        use_fallback = False
-        # Use fallback for very large right-hand side matrices (CUSOLVER has issues)
-        if od_combined.shape[1] > 1000000:  # > 1M columns
-            use_fallback = True
-
-        if not use_fallback and HE.shape[0] >= HE.shape[1]:
-            cond_num = torch.linalg.cond(HE)
-            # Use fallback if condition number is too high (> 10)
-            if cond_num.item() > 10.0:
-                use_fallback = True
-
-        if use_fallback:
-            # Use pseudoinverse for ill-conditioned or large matrices (more robust)
-            HE_pinv = torch.linalg.pinv(HE)
-            concentrations = torch.matmul(HE_pinv, od_combined)
-        else:
-            concentrations, _, _, _ = torch.linalg.lstsq(HE, od_combined, rcond=None)
+        concentrations = self._lstsq_torch(HE, od_combined)
 
         max_conc = torch.tensor([self._percentile_torch(concentrations[0, :], 99), self._percentile_torch(concentrations[1, :], 99)], device=self.device, dtype=torch.float32)
 
