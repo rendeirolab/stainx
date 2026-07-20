@@ -199,12 +199,13 @@ Based on benchmarks run on NVIDIA RTX A6000:
 
 ### Backend Speedup (torch_cuda vs torch)
 
-- **Reinhard**: 5.3-5.4x faster with torch_cuda backend
-  - 256×256 images, batch 32: torch_cuda 0.72ms vs torch 3.87ms
-  - 512×512 images, batch 64: torch_cuda 5.33ms vs torch 28.40ms
-- **Macenko**: 4.6-7.3x faster with torch_cuda backend
-  - 256×256 images, batch 32: torch_cuda 12.51ms vs torch 57.02ms
-  - 512×512 images, batch 64: torch_cuda 39.19ms vs torch 286.96ms
+- **Reinhard**: ~5.6–5.8× faster with torch_cuda backend (custom CUDA kernels)
+  - 256×256 images, batch 32: ~42,300 vs ~7,400 img/s (~5.7×)
+  - 512×512 images, batch 64: ~11,400 vs ~2,000 img/s (~5.8×)
+- **Macenko**: ~1.0–1.1× with torch_cuda vs torch (ATen parity path; not custom kernels)
+  - 256×256 images, batch 32: ~347 vs ~320 img/s (~1.09×)
+  - 512×512 images, batch 64: ~107 vs ~104 img/s (~1.03×)
+  - Pure-CUDA Macenko kernels were removed; `cupy_cuda` uses the same CuPy Macenko path as `cupy`
 
 ### Batch Size Impact
 
@@ -221,14 +222,14 @@ Throughput increases significantly with batch size (Reinhard, 256×256 images, C
 
 ### Method Performance (torch_cuda backend, batch 32, 256×256)
 
-- **Reinhard**: ~0.75ms (~42,600 images/second)
+- **Reinhard**: ~0.76ms (~42,300 images/second)
 - **HistogramMatching**: ~8.36ms (~3,800 images/second)
-- **Macenko**: ~16.5ms (~1,900 images/second)
+- **Macenko**: ~92ms (~350 images/second) on the torch_cuda ATen parity path
 
 ### Recommendations
 
 For best performance:
-- Use torch_cuda or cupy_cuda backends when available (especially for Reinhard and Macenko)
+- Use torch_cuda for Reinhard (and histogram matching where it wins); Macenko torch_cuda prioritizes torchstain parity over kernel speed
 - Process images in batches of 64-128 images
 - Use appropriate image sizes for your use case
 - Reinhard is fastest, followed by HistogramMatching, then Macenko

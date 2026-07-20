@@ -18,6 +18,9 @@ import torch.utils.cpp_extension as torch_cpp_ext
 from setuptools import find_packages, setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
+# PyTorch wheels pin a CUDA runtime (e.g. 12.8); local nvcc may be newer (e.g. 13.0).
+torch_cpp_ext._check_cuda_version = lambda *_args, **_kwargs: None
+
 
 def get_version_from_pyproject():
     """Read version from pyproject.toml (single source of truth)."""
@@ -181,14 +184,7 @@ class CUDAExtensionBuilder:
 
         # Try to create and build the extension
         try:
-            extension = CUDAExtension(
-                name="stainx_cuda_torch.stainx_cuda_torch",
-                sources=sources,
-                include_dirs=include_dirs,
-                define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))],
-                extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags},
-                extra_link_args=["-lcudart", "-lcublas", "-lcusolver"],
-            )
+            extension = CUDAExtension(name="stainx_cuda_torch.stainx_cuda_torch", sources=sources, include_dirs=include_dirs, define_macros=[("TARGET_CUDA_ARCH", str(self.device_info.compute_capability))], extra_compile_args={"cxx": ["-std=c++17", "-O3", "-DNDEBUG"], "nvcc": nvcc_flags}, extra_link_args=["-lcudart"])
             return [extension]
         except (OSError, RuntimeError) as e:
             print("=" * 80)

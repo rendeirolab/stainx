@@ -9,7 +9,7 @@
 What this file tests
 --------------------
 On a CUDA-capable system, compare:
-- `backend="torch_cuda"` (custom CUDA extension via `stainx_cuda_torch`)
+- `backend="torch_cuda"` (`stainx_cuda_torch` extension; Macenko uses ATen parity path)
 - `backend="torch"` (Torch ops)
 
 for the same inputs and assert outputs match within tolerance.
@@ -17,8 +17,10 @@ for the same inputs and assert outputs match within tolerance.
 
 import pytest
 import torch
+from torchstain.torch.normalizers import TorchMacenkoNormalizer
 
 from stainx import HistogramMatching, Macenko, Reinhard
+from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE as TORCH_CUDA_AVAILABLE
 from stainx.utils import ChannelFormatConverter
 
 
@@ -34,6 +36,7 @@ def compute_relative_absolute_error_torch(x: torch.Tensor, y: torch.Tensor) -> f
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(not TORCH_CUDA_AVAILABLE, reason="stainx torch_cuda extension is not available")
 class TestCUDABackendComparisonTorch:
     @pytest.fixture
     def cuda_device(self):
@@ -84,6 +87,17 @@ class TestCUDABackendComparisonTorch:
 
         rel_abs_error = compute_relative_absolute_error_torch(result_cuda_cpu, result_torch_cpu)
         assert rel_abs_error < 0.01, f"CUDA vs Torch Macenko relative absolute error too large: {rel_abs_error:.6f}, expected <0.01"
+
+        # Spot-check vs torchstain: no Io=240 OD-clamp regression on the CUDA path
+        # (full oracle coverage is torch↔torchstain in tests/torch_interface/).
+        ref_chw = reference_image.squeeze(0).cpu()
+        src_chw = source_image_torch.squeeze(0).cpu()
+        torchstain_normalizer = TorchMacenkoNormalizer()
+        torchstain_normalizer.fit(ref_chw)
+        torchstain_result, _, _ = torchstain_normalizer.normalize(src_chw, stains=True)
+        torchstain_tensor = torchstain_result.permute(2, 0, 1).float()
+        if torchstain_tensor.max().item() > 240.0:
+            assert result_cuda_cpu.max().item() > 240.0, "torch_cuda Macenko incorrectly capped at Io"
 
     @pytest.mark.parametrize("channel_axis", [1, -1, 3, -3])
     def test_histogram_matching_cuda_vs_torch(self, reference_image, source_image_torch, cuda_device, channel_axis):

@@ -52,20 +52,19 @@ flowchart TB
  subgraph subGraph6["Pure CUDA Kernels (csrc/)"]
         HM_PURE["histogram_matching.cu"]
         RE_PURE["reinhard.cu"]
-        MA_PURE["macenko.cu"]
   end
  subgraph subGraph7["Torch CUDA Extension"]
         SC["stainx_cuda_torch"]
         HM_WRAP["histogram_matching.cu"]
         RE_WRAP["reinhard.cu"]
-        MA_WRAP["macenko.cu"]
+        MA_WRAP["macenko.cu (ATen parity)"]
         BIND["bindings.cpp"]
   end
  subgraph subGraph10["CuPy CUDA Extension"]
         SCCP["stainx_cuda_cupy"]
         HM_WRAP_CP["histogram_matching.cu"]
         RE_WRAP_CP["reinhard.cu"]
-        MA_WRAP_CP["macenko.cu"]
+        MA_WRAP_CP["macenko.cu (stub)"]
         BIND_CP["bindings.cpp"]
   end
  subgraph Utilities["Utilities"]
@@ -100,21 +99,19 @@ flowchart TB
     MACPCU -- inherits --> CPUBB
     HMCPCU -- calls --> SCCP
     RECPCU -- calls --> SCCP
-    MACPCU -- calls --> SCCP
+    MACPCU -. inherits MacenkoCuPy \(no compiled kernels\) .-> MACP
     SC -- compiled from --> HM_WRAP
     SC -- compiled from --> RE_WRAP
     SC -- compiled from --> MA_WRAP
     SC -- compiled from --> BIND
     HM_WRAP -- includes kernels from --> HM_PURE
     RE_WRAP -- includes kernels from --> RE_PURE
-    MA_WRAP -- includes kernels from --> MA_PURE
     SCCP -- compiled from --> HM_WRAP_CP
     SCCP -- compiled from --> RE_WRAP_CP
     SCCP -- compiled from --> MA_WRAP_CP
     SCCP -- compiled from --> BIND_CP
     HM_WRAP_CP -- includes kernels from --> HM_PURE
     RE_WRAP_CP -- includes kernels from --> RE_PURE
-    MA_WRAP_CP -- includes kernels from --> MA_PURE
     UTILS --> GD & CFC
     REPT -- uses --> RGB2LAB & LAB2RGB
     SNB -- uses --> GD
@@ -130,7 +127,6 @@ flowchart TB
     style SCCP fill:#e8eaf6
     style HM_PURE fill:#fff9c4
     style RE_PURE fill:#fff9c4
-    style MA_PURE fill:#fff9c4
 ```
 
 **Key Components:**
@@ -142,7 +138,7 @@ flowchart TB
   - **Torch CUDA**: Optimized CUDA kernels via Torch extension
   - **CuPy**: Pure Python implementation using CuPy (CPU, CUDA)
   - **CuPy CUDA**: Optimized CUDA kernels via CuPy extension (future)
-- **Pure CUDA Kernels**: Located in `csrc/`, no dependencies, reusable by any CUDA interface (Torch or CuPy)
+- **Pure CUDA Kernels**: Located in `csrc/` (Reinhard + histogram matching). Macenko `torch_cuda` uses an ATen parity path in `stainx_cuda_torch/csrc/macenko.cu` instead.
 - **Framework Extensions**: 
   - **Torch CUDA Extension**: Wrappers in `src/stainx_cuda_torch/csrc/` that include pure kernels
   - **CuPy CUDA Extension**: Wrappers in `src/stainx_cuda_cupy/csrc/` that include pure kernels (future)

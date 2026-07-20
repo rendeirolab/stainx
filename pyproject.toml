@@ -49,6 +49,7 @@ stainx_cuda_cupy = ["csrc/*.cpp", "csrc/*.cu", "csrc/*.h", "csrc/*.hpp", "csrc/*
 
 [dependency-groups]
 dev = [
+    "matplotlib>=3.7.0",
     "ipykernel>=7.0.1",
     "mkdocs>=1.6.1",
     "mkdocstrings[python]>=0.24.0",
@@ -57,7 +58,7 @@ dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "pytest-xdist>=3.0.0",
-    "torchstain>=1.4.1",
+    "torchstain==1.4.1",
     "scikit-image>=0.21.0",
     "prettytable>=3.0.0",
     "torchvision>=0.15.0",
@@ -81,7 +82,7 @@ benchmark = [
     "llvmlite>=0.45.0",
     "numba>=0.60.0",
     "umap-learn>=0.5.9",
-    "torchstain @ git+https://github.com/EIDOSLAB/torchstain.git@development",
+    "torchstain==1.4.1",  # Pin same revision as correctness tests (dev group)
     "scikit-image",
     "matplotlib",
     "numpy<2.0.0",  # Constrain numpy for pandas 1.5.3 compatibility (from slideflow<3.0.0)

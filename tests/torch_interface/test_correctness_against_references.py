@@ -85,8 +85,15 @@ class TestTorchstainComparisonTorch:
         result = normalizer.transform(source_image_torch.cpu())
         result_cpu = result.squeeze(0).cpu().float()
 
+        # Intermediate params must match torchstain before comparing images
+        assert torch.allclose(normalizer._stain_matrix.cpu().float(), torchstain_normalizer.HERef.float(), atol=1e-5, rtol=1e-4), f"Macenko HE matrix mismatch vs torchstain (hw={image_hw})"
+        assert torch.allclose(normalizer._target_max_conc.cpu().float().flatten(), torchstain_normalizer.maxCRef.float().flatten(), atol=1e-4, rtol=1e-3), f"Macenko maxC mismatch vs torchstain (hw={image_hw})"
+
         rel_abs_error = compute_relative_absolute_error_torch(result_cpu, torchstain_tensor)
-        assert rel_abs_error < 0.1, f"Macenko relative absolute error too large: {rel_abs_error:.6f}, expected <0.1 (hw={image_hw})"
+        assert rel_abs_error < 0.01, f"Macenko relative absolute error too large: {rel_abs_error:.6f}, expected <0.01 (hw={image_hw})"
+        assert result_cpu.max().item() <= 255.0 + 1e-3
+        if torchstain_tensor.max().item() > 240.0:
+            assert result_cpu.max().item() > 240.0, f"Macenko incorrectly capped at Io (hw={image_hw})"
 
     @pytest.mark.parametrize("channel_axis", [1, -1, 3, -3])
     def test_histogram_matching_comparison(self, reference_image, source_image_torch, device_torch, channel_axis, image_hw):

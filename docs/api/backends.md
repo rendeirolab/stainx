@@ -53,17 +53,16 @@ normalizer = Reinhard(device="cuda", backend="cupy_cuda")
 
 ## Performance
 
-CUDA backends (torch_cuda, cupy_cuda) provide significant performance improvements for batch processing:
+CUDA backends help most where custom kernels remain:
 
-- **Reinhard**: 5.3-5.4x speedup compared to torch backend
-- **Macenko**: 4.6-7.3x speedup compared to torch backend
+- **Reinhard**: ~5.6–5.8× speedup with `torch_cuda` vs torch (custom kernels)
+- **Macenko**: ~1.0–1.1× with `torch_cuda` vs torch (ATen parity path for torchstain match)
 - **HistogramMatching**: torch backend is typically faster for this method
 - Best performance with larger batch sizes (64-128 images)
-- Optimized memory access patterns
 
 **Example performance** (NVIDIA RTX A6000, batch 32, 256×256):
-- Reinhard: torch_cuda 0.72ms vs torch 3.87ms (5.4x speedup)
-- Macenko: torch_cuda 12.51ms vs torch 57.02ms (4.6x speedup)
+- Reinhard: ~42,300 vs ~7,400 img/s (~5.7×)
+- Macenko: ~347 vs ~320 img/s (~1.09×)
 
 See the [Benchmarks](../benchmarks.md) page for detailed performance comparisons.
 

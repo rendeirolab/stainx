@@ -12,5 +12,6 @@ try:
     from stainx.backends.cupy_cuda_backend import CupyCUDABackendBase, HistogramMatchingCuPyCUDA, MacenkoCuPyCUDA, ReinhardCuPyCUDA
 
     __all__ = ["CupyCUDABackendBase", "HistogramMatchingCuPyCUDA", "HistogramMatchingTorch", "MacenkoCuPyCUDA", "MacenkoTorch", "ReinhardCuPyCUDA", "ReinhardTorch", "TorchBackendBase"]
-except ImportError:
+except Exception:
+    # CuPy missing, or present but unusable (e.g. driver/runtime mismatch). Torch backends remain available.
     __all__ = ["HistogramMatchingTorch", "MacenkoTorch", "ReinhardTorch", "TorchBackendBase"]

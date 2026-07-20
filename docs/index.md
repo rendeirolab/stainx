@@ -50,7 +50,7 @@ normalized = normalizer.transform(source_images)  # Process entire batch at once
 
 StainX provides significant performance improvements, especially when processing batches of images. Based on benchmarks on NVIDIA RTX A6000:
 
-- **CUDA Backend Speedup**: 5.3-5.4x for Reinhard, 4.6-7.3x for Macenko
+- **CUDA Backend Speedup**: ~5.7× for Reinhard (`torch_cuda` kernels); Macenko `torch_cuda` is parity-first (~1× vs torch)
 - **Batch Processing Throughput**: Up to 46,600 images/second (vs ~5,500 for single images)
 - **Optimal Batch Size**: 64-128 images provides best performance
 
