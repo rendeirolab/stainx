@@ -10,6 +10,8 @@
 
 Torch-first stain normalization for histopathology images with batch processing, training transforms, and optional CUDA kernels.
 
+> **0.1.0 migration:** CuPy backends are removed. Pin `stainx<0.1` to stay on the CuPy stack, or switch to Torch tensors with `backend="torch"` / `"torch_cuda"`.
+
 ## Features
 
 - **Multiple algorithms**: Histogram Matching, Reinhard, and Macenko normalization
@@ -75,6 +77,7 @@ transform = StainNormalizerTransform(
     mode="reference",
     reference=reference_image,
     device="cuda",
+    normalize_to_0_1=True,  # keep [0, 1] for torchvision Normalize
 )
 batch_out = transform(source_images)
 ```
