@@ -32,6 +32,10 @@ class TestPrepareForNormalizer:
         assert out.data_ptr() == x.data_ptr()
         assert out.device.type == "cuda"
 
+    def test_unknown_channel_axis_raises(self):
+        with pytest.raises(ValueError, match="Unsupported channel_axis"):
+            ChannelFormatConverter(channel_axis=0)
+
 
 class TestStainNormalizerTransform:
     @pytest.fixture
@@ -50,6 +54,11 @@ class TestStainNormalizerTransform:
         assert out.shape == source.shape
         assert out.device == source.device
 
+    def test_default_device_follows_input(self, reference, source):
+        t = StainNormalizerTransform(method="reinhard", mode="reference", reference=reference)
+        out = t(source)
+        assert out.device == source.device
+
     def test_single_image_roundtrip_rank(self, reference):
         torch.manual_seed(2)
         img = (torch.rand(3, 64, 64) * 255).round().to(torch.uint8)
@@ -57,22 +66,33 @@ class TestStainNormalizerTransform:
         out = t(img)
         assert out.shape == img.shape
 
-    def test_macenko_normalize_to_0_1(self, reference):
+    def test_macenko_normalize_to_0_1(self):
         torch.manual_seed(3)
         src = torch.rand(2, 3, 64, 64)
         ref = torch.rand(1, 3, 64, 64)
         t = StainNormalizerTransform(method="macenko", mode="reference", reference=ref, device="cpu", normalize_to_0_1=True)
         out = t(src)
         assert out.dtype.is_floating_point
+        assert float(out.amin()) >= -1e-5
         assert float(out.amax()) <= 1.0 + 1e-5
+        assert float(out.mean()) < 1.0
 
-    def test_macenko_auto_scales_unit_float_without_flag(self, reference):
+    def test_macenko_without_flag_stays_0_255_for_unit_float(self):
         torch.manual_seed(4)
         src = torch.rand(2, 3, 64, 64)
         ref = torch.rand(1, 3, 64, 64)
         t = StainNormalizerTransform(method="macenko", mode="reference", reference=ref, device="cpu", normalize_to_0_1=False)
         out = t(src)
-        assert float(out.amax()) <= 1.0 + 1e-5
+        assert float(out.amax()) > 1.0
+
+    def test_normalize_to_0_1_matches_explicit_macenko(self):
+        torch.manual_seed(5)
+        src = torch.rand(2, 3, 64, 64)
+        ref = torch.rand(1, 3, 64, 64)
+        t = StainNormalizerTransform(method="macenko", mode="reference", reference=ref, device="cpu", normalize_to_0_1=True)
+        n = Macenko(device="cpu", normalize_to_0_1=True)
+        n.fit(ref)
+        assert torch.allclose(t(src), n.transform(src), rtol=0, atol=1e-5)
 
     def test_batch_mode_refits(self, source):
         t = StainNormalizerTransform(method="reinhard", mode="batch", device="cpu", batch_ref_index=0)
@@ -81,19 +101,30 @@ class TestStainNormalizerTransform:
         assert t.normalizer._is_fitted
 
     def test_hm_channels_last_no_double_permute(self):
-        torch.manual_seed(5)
+        torch.manual_seed(6)
         ref = (torch.rand(1, 32, 32, 3) * 255).round().to(torch.uint8)
         src = (torch.rand(2, 32, 32, 3) * 255).round().to(torch.uint8)
         t = StainNormalizerTransform(method="histogram_matching", mode="reference", reference=ref, device="cpu", channel_axis=-1)
         out = t(src)
         assert out.shape == src.shape
 
-    def test_prebuilt_normalizer(self, reference, source):
-        n = Macenko(device="cpu")
-        n.fit(reference)
-        t = StainNormalizerTransform(mode="reference", normalizer=n, device="cpu")
-        out = t(source)
-        assert out.shape == source.shape
+    def test_macenko_rejects_nhwc_channel_axis(self, reference):
+        with pytest.raises(ValueError, match="only supported for histogram_matching"):
+            StainNormalizerTransform(method="macenko", mode="reference", reference=reference, channel_axis=-1)
+
+    def test_macenko_rejects_nhwc_tensor(self, reference):
+        t = StainNormalizerTransform(method="macenko", mode="reference", reference=reference, device="cpu")
+        nhwc = (torch.rand(2, 64, 64, 3) * 255).round().to(torch.uint8)
+        with pytest.raises(ValueError, match="Expected NCHW"):
+            t(nhwc)
+
+    def test_prebuilt_normalizer_honors_normalize_flag(self, reference, source):
+        n = Macenko(device="cpu", normalize_to_0_1=False)
+        n.fit(reference.float() / 255.0)
+        t = StainNormalizerTransform(mode="reference", normalizer=n, device="cpu", normalize_to_0_1=True)
+        assert t.normalizer.normalize_to_0_1 is True
+        out = t(source.float() / 255.0)
+        assert float(out.amax()) <= 1.0 + 1e-5
 
     def test_state_dict_does_not_include_stain_matrix(self, reference):
         t = StainNormalizerTransform(method="macenko", mode="reference", reference=reference, device="cpu")
