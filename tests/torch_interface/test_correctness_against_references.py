@@ -57,7 +57,8 @@ def device(backend):
 def _hm_inputs(reference_image: torch.Tensor, source_image: torch.Tensor, channel_axis: int) -> tuple[torch.Tensor, torch.Tensor]:
     """Return inputs in the layout expected by HistogramMatching for ``channel_axis``."""
     if channel_axis in (-1, 3):
-        # True NHWC — do not run through prepare_for_normalizer (that would NCHW-ify them).
+        # True NHWC — pass through as-is (HistogramMatching honors channel_axis).
+        # Do not NCHW-convert here unless the normalizer also uses channel_axis=1.
         return reference_image.permute(0, 2, 3, 1).contiguous(), source_image.permute(0, 2, 3, 1).contiguous()
     return reference_image, source_image
 
