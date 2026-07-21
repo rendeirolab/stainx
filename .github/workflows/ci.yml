@@ -109,10 +109,13 @@ jobs:
           uv sync --group dev
           uv pip install -e .
 
-      - name: Build CUDA extension (if CUDA available)
+      - name: Build CUDA extension (if nvcc available)
         run: |
-          uv run python setup.py build_ext --inplace || echo "CUDA extension build skipped; Torch backend only"
-        continue-on-error: true
+          if command -v nvcc >/dev/null 2>&1; then
+            uv run python setup.py build_ext --inplace
+          else
+            echo "nvcc not found; continuing with Torch backend only"
+          fi
 
       - name: Run tests
         run: |
@@ -232,8 +235,12 @@ jobs:
         run: |
           uv run python -c "
           import stainx_cuda_torch
+          from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
           print(f'CUDA extension imported successfully')
-          print(f'Functions available: {getattr(stainx_cuda_torch, \"FUNCTIONS_AVAILABLE\", False)}')
+          print(f'FUNCTIONS_AVAILABLE={stainx_cuda_torch.FUNCTIONS_AVAILABLE}')
+          print(f'CUDA_AVAILABLE={CUDA_AVAILABLE}')
+          assert stainx_cuda_torch.FUNCTIONS_AVAILABLE, 'stainx_cuda_torch built but FUNCTIONS_AVAILABLE is False'
+          assert CUDA_AVAILABLE, 'torch_cuda backend reported unavailable on GPU runner'
           "
 
       - name: Run tests
