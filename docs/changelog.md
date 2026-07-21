@@ -7,6 +7,7 @@
 - **Torch-only**: removed CuPy backends, `stainx_cuda_cupy`, and `stainx[cupy]`
 - Valid backends are now only `"torch"` and `"torch_cuda"`
 - No backward compatibility with 0.0.x import paths or CuPy array inputs
+- **Migration**: CuPy users should pin `stainx<0.1` or switch inputs/backends to Torch (`backend="torch"` / `"torch_cuda"`)
 
 ### Added
 
