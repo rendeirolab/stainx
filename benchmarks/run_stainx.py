@@ -15,7 +15,6 @@ import torch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from stainx import HistogramMatching, Macenko, Reinhard
-from stainx.utils import ChannelFormatConverter
 
 
 def main():
@@ -69,10 +68,8 @@ def main():
     elif args.method == "macenko":
         normalizer = Macenko(device=device)
     elif args.method == "histogram_matching":
-        converter = ChannelFormatConverter(channel_axis=0)
-        reference_image = converter.prepare_for_normalizer(reference_image)
-        source_image = converter.prepare_for_normalizer(source_image)
-        normalizer = HistogramMatching(device=device, channel_axis=0)
+        # Inputs are already NCHW — no layout conversion needed.
+        normalizer = HistogramMatching(device=device, channel_axis=1)
 
     # Fit on reference image
     print("Fitting normalizer...")
