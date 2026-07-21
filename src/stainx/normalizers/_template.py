@@ -17,7 +17,8 @@ class NormalizerTemplate(StainNormalizerBase):
 
     Backends:
     - ``torch``: PyTorch ops on CPU / CUDA / MPS
-    - ``torch_cuda``: compiled CUDA extension (optional; falls back if unavailable)
+    - ``torch_cuda``: compiled CUDA extension (optional). Auto-select falls back to
+      ``torch`` if the extension is unavailable; ``backend="torch_cuda"`` raises.
     """
 
     def __init__(self, device: str | Any | None = None, backend: str | None = None):
