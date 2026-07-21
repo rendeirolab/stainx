@@ -8,12 +8,12 @@ StainX is a foundation for fast stain normalization. Plug `StainNormalizerTransf
 import torch
 from stainx import StainNormalizerTransform
 
-reference = torch.rand(1, 3, 224, 224)  # float in [0, 1]
+reference = torch.rand(1, 3, 224, 224)  # float in [0, 1], NCHW
 transform = StainNormalizerTransform(
     method="macenko",
     mode="reference",          # preferred for supervised training
     reference=reference,
-    device="cuda",
+    device="cuda",             # optional; default keeps the input device
     normalize_to_0_1=True,     # required before torchvision ImageNet Normalize
 )
 
@@ -21,16 +21,23 @@ batch = torch.rand(8, 3, 224, 224)
 out = transform(batch)         # still in [0, 1]
 ```
 
+### Layout
+
+| Method | Layout |
+|--------|--------|
+| Macenko / Reinhard | **NCHW** with `C=3` only (`channel_axis` must stay default `1`) |
+| Histogram matching | NCHW (`channel_axis=1`) or NHWC (`channel_axis=-1` / `3`) |
+
+Passing NHWC into Macenko/Reinhard raises — those backends would otherwise treat height as channels.
+
 ### Value range (Macenko)
 
 | Input | Flag | Output |
 |-------|------|--------|
 | `uint8` / float in ~`[0, 255]` | default | ~`[0, 255]` |
-| float in `[0, 1]` (e.g. `ToDtype(..., scale=True)`) | `normalize_to_0_1=True` | `[0, 1]` |
+| float in `[0, 1]` (e.g. `ToDtype(..., scale=True)`) | **`normalize_to_0_1=True`** | `[0, 1]` |
 
-If you pass float `[0, 1]` without the flag, the transform auto-scales Macenko output back to `[0, 1]` so ImageNet `Normalize` stays correct. Prefer setting `normalize_to_0_1=True` explicitly in training pipelines.
-
-Reinhard already preserves a `[0, 1]` float convention when inputs are unit-scaled.
+Always set `normalize_to_0_1=True` for unit-float training pipelines. There is no `amax()`-based auto-scale (it breaks after color jitter and syncs CUDA every step).
 
 ### Modes
 
@@ -40,6 +47,10 @@ Reinhard already preserves a `[0, 1]` float convention when inputs are unit-scal
 | `batch` | Every forward on the batch (or `batch_ref_index`) | Exploratory / domain-shift visualization |
 
 `batch` mode **re-fits inside `forward`**, mutates normalizer state, and changes statistics every step. It is usually **unsafe** for reproducible supervised training and a poor fit under `DataLoader` workers unless that behavior is intentional.
+
+### Device
+
+Default `device=None` keeps batches on the **input** device (CPU DataLoader workers stay on CPU). Pass `device="cuda"` only when you intentionally move data onto the GPU inside the transform.
 
 ### Checkpointing
 
