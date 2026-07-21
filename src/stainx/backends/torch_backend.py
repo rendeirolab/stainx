@@ -16,10 +16,7 @@ class TorchBackendBase:
     @staticmethod
     def rgb_to_lab_torch(rgb: torch.Tensor, channel_axis: int = 1) -> torch.Tensor:
         # uint8 is [0, 255]; float is assumed already in [0, 1] (do not use max()>1).
-        if rgb.dtype == torch.uint8:
-            rgb = rgb.float() / 255.0
-        else:
-            rgb = rgb.float()
+        rgb = rgb.float() / 255.0 if rgb.dtype == torch.uint8 else rgb.float()
 
         if channel_axis == -1 or (channel_axis == 3 and rgb.ndim == 4):
             rgb = rgb.permute(0, 3, 1, 2)

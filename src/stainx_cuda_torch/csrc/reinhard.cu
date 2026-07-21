@@ -115,9 +115,7 @@ torch::Tensor reinhard_cuda(torch::Tensor input_images, torch::Tensor reference_
     torch::Tensor output = rgb_normalized.view({N, H, W, 3}).permute(at::IntArrayRef({0, 3, 1, 2}));
 
     // Preserve original dtype (uint8 stays 0–255; float stays [0,1]).
-    if (input_images.dtype() == torch::kUInt8) {
-        output = (output * 255.0f).clamp(0.0f, 255.0f).to(torch::kUInt8);
-    }
+    if (input_images.dtype() == torch::kUInt8) { output = (output * 255.0f).clamp(0.0f, 255.0f).to(torch::kUInt8); }
 
     return output;
 }

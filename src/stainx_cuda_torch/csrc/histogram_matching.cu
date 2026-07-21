@@ -60,11 +60,11 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
         was_uint8_or_high_range = true;
     } else {
         // Float is assumed [0, 1] — scale to uint8 (no max()>1 heuristic / sync).
-        needs_scale_back             = true;
-        torch::Tensor input_flat     = input_images.contiguous().view(-1);
-        images_uint8                 = torch::empty({N, C, H, W}, torch::TensorOptions().dtype(torch::kUInt8).device(input_images.device()));
-        int total_pixels             = N * C * H * W;
-        int num_blocks               = (total_pixels + num_threads - 1) / num_threads;
+        needs_scale_back         = true;
+        torch::Tensor input_flat = input_images.contiguous().view(-1);
+        images_uint8             = torch::empty({N, C, H, W}, torch::TensorOptions().dtype(torch::kUInt8).device(input_images.device()));
+        int total_pixels         = N * C * H * W;
+        int num_blocks           = (total_pixels + num_threads - 1) / num_threads;
 
         convert_to_uint8_kernel<<<num_blocks, num_threads, 0, stream>>>(input_flat.data_ptr<float>(), images_uint8.data_ptr<uint8_t>(), needs_scale_back, total_pixels);
         err = cudaGetLastError();
