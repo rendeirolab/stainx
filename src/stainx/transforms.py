@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 
 from stainx.normalizers import HistogramMatching, Macenko, Reinhard
-from stainx.utils import ChannelFormatConverter, get_device
+from stainx.utils import get_device
 
 MethodName = Literal["macenko", "reinhard", "histogram_matching"]
 ModeName = Literal["reference", "batch"]
@@ -34,19 +34,45 @@ class StainNormalizerTransform(nn.Module):
         Fit on the current batch (or a designated index) at every forward call.
         Useful for exploratory / domain-shift visualization. Usually unsafe for
         reproducible supervised training because statistics change every step.
+        Do not use under ``DataLoader`` workers unless that mutability is intended.
+
+    Value range
+    -----------
+    Macenko returns ``[0, 255]`` by default. For float ``[0, 1]`` pipelines
+    (e.g. ``ToDtype(..., scale=True)`` then ImageNet ``Normalize``), pass
+    ``normalize_to_0_1=True``, or rely on auto-scaling when the forward input
+    is float with ``max() <= 1``.
+
+    Serialization
+    -------------
+    Fitted stain parameters live on the inner normalizer, not as registered
+    buffers. ``state_dict()`` / DDP / checkpoints do **not** persist HE / maxC /
+    histograms — call ``fit_reference`` again after loading weights.
     """
 
-    def __init__(self, method: MethodName | Any = "macenko", *, mode: ModeName = "reference", reference: torch.Tensor | None = None, device: str | torch.device | None = None, backend: str | None = None, channel_axis: int = 1, batch_ref_index: int = 0, normalize_to_0_1: bool = False, normalizer: Any | None = None):
+    def __init__(
+        self,
+        method: MethodName = "macenko",
+        *,
+        mode: ModeName = "reference",
+        reference: torch.Tensor | None = None,
+        device: str | torch.device | None = None,
+        backend: str | None = None,
+        channel_axis: int = 1,
+        batch_ref_index: int = 0,
+        normalize_to_0_1: bool = False,
+        normalizer: Any | None = None,
+    ):
         """
         Args:
-            method: Algorithm name, or a constructed normalizer instance when ``normalizer`` is not passed.
+            method: Algorithm name (``"macenko"``, ``"reinhard"``, ``"histogram_matching"``).
             mode: ``"reference"`` or ``"batch"``.
             reference: Required for ``mode="reference"`` unless ``normalizer`` is already fitted.
             device: Torch device for the normalizer.
             backend: ``"torch"`` or ``"torch_cuda"`` (auto-selected if None).
             channel_axis: Channel axis for histogram matching (default NCHW → 1).
             batch_ref_index: Index within the batch used as reference when ``mode="batch"``.
-            normalize_to_0_1: Forwarded to Macenko when constructing from ``method``.
+            normalize_to_0_1: Forwarded to Macenko; also prefer this for ``[0, 1]`` float pipelines.
             normalizer: Optional pre-built normalizer (skips construction from ``method``).
         """
         super().__init__()
@@ -60,7 +86,7 @@ class StainNormalizerTransform(nn.Module):
 
         if normalizer is not None:
             self.normalizer = normalizer
-        elif isinstance(method, str):
+        else:
             if method not in _METHOD_MAP:
                 raise ValueError(f"Unknown method '{method}'. Choose from {sorted(_METHOD_MAP)}")
             cls = _METHOD_MAP[method]
@@ -70,12 +96,6 @@ class StainNormalizerTransform(nn.Module):
                 self.normalizer = cls(device=self.device, backend=backend, normalize_to_0_1=normalize_to_0_1)
             else:
                 self.normalizer = cls(device=self.device, backend=backend)
-        else:
-            # Treat as a pre-built normalizer instance (legacy example style)
-            self.normalizer = method
-
-        self._uses_hm = isinstance(self.normalizer, HistogramMatching)
-        self._converter = ChannelFormatConverter(channel_axis=channel_axis) if self._uses_hm else None
 
         if mode == "reference":
             if reference is None and not getattr(self.normalizer, "_is_fitted", False):
@@ -90,23 +110,34 @@ class StainNormalizerTransform(nn.Module):
         return self
 
     def _prepare(self, images: torch.Tensor) -> torch.Tensor:
-        was_single = images.dim() == 3
-        if was_single:
+        # Keep tensors on ``self.device``. Do not NHWC→NCHW here: HistogramMatching
+        # already honors ``channel_axis``; converting then leaving channels-last
+        # would double-permute.
+        if images.dim() == 3:
             images = images.unsqueeze(0)
-        images = images.to(self.device)
-        if self._converter is not None:
-            images = self._converter.prepare_for_normalizer(images)
-        return images
+        return images.to(self.device)
+
+    @staticmethod
+    def _is_unit_float(images: torch.Tensor) -> bool:
+        return images.is_floating_point() and bool(images.detach().amax() <= 1.0)
 
     def forward(self, img: torch.Tensor) -> torch.Tensor:
         was_single = img.dim() == 3
+        unit_float_input = self._is_unit_float(img)
         batch = self._prepare(img)
 
         if self.mode == "batch":
+            # Intentional: re-fits every forward (mutates state; not reproducible across steps).
             idx = self.batch_ref_index
             if idx < 0 or idx >= batch.shape[0]:
                 raise IndexError(f"batch_ref_index={idx} out of range for batch size {batch.shape[0]}")
             self.normalizer.fit(batch[idx : idx + 1])
 
         result = self.normalizer.transform(batch)
+
+        # Macenko defaults to [0, 255]; match [0, 1] float inputs for torchvision Normalize.
+        if unit_float_input and isinstance(self.normalizer, Macenko) and not getattr(self.normalizer, "normalize_to_0_1", False):
+            if result.is_floating_point() and bool(result.detach().amax() > 1.0):
+                result = result / 255.0
+
         return result.squeeze(0) if was_single else result
