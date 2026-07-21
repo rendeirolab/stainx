@@ -109,12 +109,15 @@ jobs:
           uv sync --group dev
           uv pip install -e .
 
-      - name: Build CUDA extension (if nvcc available)
+      - name: Build CUDA extension (if CUDA runtime and nvcc available)
         run: |
-          if command -v nvcc >/dev/null 2>&1; then
+          # setup.py only builds when torch.cuda.is_available(); require both gates
+          # so nvcc-without-GPU does not look like a successful CUDA build.
+          if uv run python -c 'import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)' \
+            && command -v nvcc >/dev/null 2>&1; then
             uv run python setup.py build_ext --inplace
           else
-            echo "nvcc not found; continuing with Torch backend only"
+            echo "CUDA runtime or nvcc not available; continuing with Torch backend only"
           fi
 
       - name: Run tests
