@@ -28,10 +28,12 @@ from stainx.utils import ChannelFormatConverter
 
 # Image tensors are ~[0, 255]. Reinhard / HM: at most one grey level vs baselines.
 # Macenko on CUDA: OD/log is computed on device; after CPU float32 cov (stain-plane
-# parity), residual vs torchstain stays within two grey levels.
+# parity), residual vs torchstain stays within two grey levels. Also enforce a
+# mean absolute error floor so mid-tone drift cannot hide under a few hot pixels.
 RTOL = 0.0
 ATOL = 1.0
 MACENKO_ATOL = 2.0
+MACENKO_MAE = 0.35
 
 
 def _backend_params():
@@ -121,6 +123,8 @@ class TestAgainstBaselines:
         assert torch.allclose(fit_normalizer._stain_matrix.cpu().float(), baseline.HERef.float(), rtol=1e-4, atol=1e-5), f"Macenko HE mismatch (backend={backend}, hw={image_hw})"
         assert torch.allclose(fit_normalizer._target_max_conc.cpu().float().flatten(), baseline.maxCRef.float().flatten(), rtol=1e-3, atol=1e-4), f"Macenko maxC mismatch (backend={backend}, hw={image_hw})"
         assert torch.allclose(result, baseline_tensor, rtol=RTOL, atol=MACENKO_ATOL), f"Macenko mismatch vs torchstain (backend={backend}, hw={image_hw})"
+        mae = (result - baseline_tensor).abs().mean().item()
+        assert mae <= MACENKO_MAE, f"Macenko MAE {mae:.4f} > {MACENKO_MAE} (backend={backend}, hw={image_hw})"
         assert result.max().item() <= 255.0 + MACENKO_ATOL
         if baseline_tensor.max().item() > 240.0:
             assert result.max().item() > 240.0, f"Macenko incorrectly capped at Io (backend={backend}, hw={image_hw})"
