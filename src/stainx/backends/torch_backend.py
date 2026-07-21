@@ -461,6 +461,9 @@ class MacenkoTorch(TorchBackendBase):
         # Fit on CPU float32 so HE / maxC match torchstain (same cov constraint as transform).
         images_float = images_float.to("cpu")
 
+        if images_float.dim() != 4 or images_float.shape[1] != 3:
+            raise ValueError(f"Macenko fit expects NCHW with C=3, got shape {tuple(images_float.shape)}")
+
         _N, _C, _H, _W = images_float.shape
 
         Io = 240.0
@@ -524,7 +527,11 @@ class MacenkoTorch(TorchBackendBase):
         if stain_matrix.shape != (3, 2):
             raise ValueError(f"stain_matrix must have shape (3, 2), got {stain_matrix.shape}")
 
+        if images_float.dim() != 4:
+            raise ValueError(f"Macenko expects NCHW images, got shape {tuple(images_float.shape)}")
         N, C, H, W = images_float.shape
+        if C != 3:
+            raise ValueError(f"Macenko expects 3 channels in dim 1 (NCHW), got C={C} with shape {tuple(images_float.shape)}")
 
         # Pre-compute constants
         Io = 240.0

@@ -45,7 +45,7 @@ class ChannelFormatConverter:
 
     def __init__(self, channel_axis: int = 1):
         if channel_axis not in self._CHANNEL_AXIS_FORMAT:
-            channel_axis = 1
+            raise ValueError(f"Unsupported channel_axis={channel_axis}. Valid values: {sorted(self._CHANNEL_AXIS_FORMAT)}")
 
         self.channel_axis = channel_axis
         format_info = self._CHANNEL_AXIS_FORMAT[channel_axis]

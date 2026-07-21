@@ -13,12 +13,13 @@ import torch
 import torch.nn as nn
 
 from stainx.normalizers import HistogramMatching, Macenko, Reinhard
-from stainx.utils import get_device
 
 MethodName = Literal["macenko", "reinhard", "histogram_matching"]
 ModeName = Literal["reference", "batch"]
 
 _METHOD_MAP = {"macenko": Macenko, "reinhard": Reinhard, "histogram_matching": HistogramMatching}
+_CHANNELS_FIRST = frozenset({1, -3})
+_CHANNELS_LAST = frozenset({-1, 3})
 
 
 class StainNormalizerTransform(nn.Module):
@@ -36,12 +37,23 @@ class StainNormalizerTransform(nn.Module):
         reproducible supervised training because statistics change every step.
         Do not use under ``DataLoader`` workers unless that mutability is intended.
 
+    Layout
+    ------
+    Macenko / Reinhard expect **NCHW** with ``C=3`` (or CHW for a single image).
+    ``channel_axis`` is only valid for histogram matching. Passing NHWC into
+    Macenko/Reinhard raises — it would otherwise treat ``H`` as channels.
+
     Value range
     -----------
     Macenko returns ``[0, 255]`` by default. For float ``[0, 1]`` pipelines
-    (e.g. ``ToDtype(..., scale=True)`` then ImageNet ``Normalize``), pass
-    ``normalize_to_0_1=True``, or rely on auto-scaling when the forward input
-    is float with ``max() <= 1``.
+    (e.g. ``ToDtype(..., scale=True)`` then ImageNet ``Normalize``), set
+    ``normalize_to_0_1=True``. There is no auto ``amax``-based scaling (that
+    misfires after jitter and forces a CUDA sync every step).
+
+    Device
+    ------
+    Default ``device=None`` keeps tensors on the **input** device (safe for CPU
+    DataLoader workers). Pass ``device="cuda"`` explicitly to move batches.
 
     Serialization
     -------------
@@ -50,52 +62,51 @@ class StainNormalizerTransform(nn.Module):
     histograms — call ``fit_reference`` again after loading weights.
     """
 
-    def __init__(
-        self,
-        method: MethodName = "macenko",
-        *,
-        mode: ModeName = "reference",
-        reference: torch.Tensor | None = None,
-        device: str | torch.device | None = None,
-        backend: str | None = None,
-        channel_axis: int = 1,
-        batch_ref_index: int = 0,
-        normalize_to_0_1: bool = False,
-        normalizer: Any | None = None,
-    ):
+    def __init__(self, method: MethodName = "macenko", *, mode: ModeName = "reference", reference: torch.Tensor | None = None, device: str | torch.device | None = None, backend: str | None = None, channel_axis: int = 1, batch_ref_index: int = 0, normalize_to_0_1: bool = False, normalizer: Any | None = None):
         """
         Args:
             method: Algorithm name (``"macenko"``, ``"reinhard"``, ``"histogram_matching"``).
             mode: ``"reference"`` or ``"batch"``.
             reference: Required for ``mode="reference"`` unless ``normalizer`` is already fitted.
-            device: Torch device for the normalizer.
+            device: If set, batches are moved here. If ``None``, keep the input tensor device.
             backend: ``"torch"`` or ``"torch_cuda"`` (auto-selected if None).
-            channel_axis: Channel axis for histogram matching (default NCHW → 1).
+            channel_axis: Histogram matching only (``1``/``-3`` NCHW, ``-1``/``3`` NHWC).
             batch_ref_index: Index within the batch used as reference when ``mode="batch"``.
-            normalize_to_0_1: Forwarded to Macenko; also prefer this for ``[0, 1]`` float pipelines.
+            normalize_to_0_1: Macenko output in ``[0, 1]`` (required for unit-float training pipelines).
             normalizer: Optional pre-built normalizer (skips construction from ``method``).
         """
         super().__init__()
         self.mode = mode
         self.channel_axis = channel_axis
         self.batch_ref_index = batch_ref_index
-        self.device = get_device(device)
+        # None = follow input device each call (do not auto-pick CUDA).
+        self.device = None if device is None else torch.device(device)
+        self._normalize_to_0_1 = normalize_to_0_1
 
         if mode not in ("reference", "batch"):
             raise ValueError(f"Unsupported mode '{mode}'. Use 'reference' or 'batch'.")
 
         if normalizer is not None:
             self.normalizer = normalizer
+            if normalize_to_0_1 and isinstance(self.normalizer, Macenko):
+                self.normalizer.normalize_to_0_1 = True
+            elif normalize_to_0_1 and not isinstance(self.normalizer, Macenko):
+                raise ValueError("normalize_to_0_1 only applies to Macenko normalizers.")
+            if not isinstance(self.normalizer, HistogramMatching) and channel_axis not in _CHANNELS_FIRST:
+                raise ValueError(f"channel_axis={channel_axis} is only supported for histogram_matching; Macenko/Reinhard require NCHW (channel_axis=1).")
         else:
             if method not in _METHOD_MAP:
                 raise ValueError(f"Unknown method '{method}'. Choose from {sorted(_METHOD_MAP)}")
+            if method != "histogram_matching" and channel_axis not in _CHANNELS_FIRST:
+                raise ValueError(f"channel_axis={channel_axis} is only supported for histogram_matching; {method} requires NCHW (channel_axis=1).")
             cls = _METHOD_MAP[method]
+            norm_device = self.device if self.device is not None else "cpu"
             if method == "histogram_matching":
-                self.normalizer = cls(device=self.device, backend=backend, channel_axis=channel_axis)
+                self.normalizer = cls(device=norm_device, backend=backend, channel_axis=channel_axis)
             elif method == "macenko":
-                self.normalizer = cls(device=self.device, backend=backend, normalize_to_0_1=normalize_to_0_1)
+                self.normalizer = cls(device=norm_device, backend=backend, normalize_to_0_1=normalize_to_0_1)
             else:
-                self.normalizer = cls(device=self.device, backend=backend)
+                self.normalizer = cls(device=norm_device, backend=backend)
 
         if mode == "reference":
             if reference is None and not getattr(self.normalizer, "_is_fitted", False):
@@ -109,21 +120,27 @@ class StainNormalizerTransform(nn.Module):
         self.normalizer.fit(ref)
         return self
 
+    def _target_device(self, images: torch.Tensor) -> torch.device:
+        return self.device if self.device is not None else images.device
+
     def _prepare(self, images: torch.Tensor) -> torch.Tensor:
-        # Keep tensors on ``self.device``. Do not NHWC→NCHW here: HistogramMatching
-        # already honors ``channel_axis``; converting then leaving channels-last
-        # would double-permute.
         if images.dim() == 3:
             images = images.unsqueeze(0)
-        return images.to(self.device)
+        if images.dim() != 4:
+            raise ValueError(f"Expected CHW/NCHW or HWC/NHWC image tensor, got shape {tuple(images.shape)}")
 
-    @staticmethod
-    def _is_unit_float(images: torch.Tensor) -> bool:
-        return images.is_floating_point() and bool(images.detach().amax() <= 1.0)
+        if isinstance(self.normalizer, HistogramMatching) and self.channel_axis in _CHANNELS_LAST:
+            if images.shape[-1] != 3:
+                raise ValueError(f"channels-last histogram matching expects shape (N, H, W, 3), got {tuple(images.shape)}")
+        else:
+            # Macenko / Reinhard / HM-NCHW: channels must be dim 1.
+            if images.shape[1] != 3:
+                raise ValueError(f"Expected NCHW with C=3 (got shape {tuple(images.shape)}). Macenko/Reinhard do not accept NHWC; use channel_axis=-1 only with histogram_matching, or permute to NCHW first.")
+
+        return images.to(self._target_device(images))
 
     def forward(self, img: torch.Tensor) -> torch.Tensor:
         was_single = img.dim() == 3
-        unit_float_input = self._is_unit_float(img)
         batch = self._prepare(img)
 
         if self.mode == "batch":
@@ -134,10 +151,4 @@ class StainNormalizerTransform(nn.Module):
             self.normalizer.fit(batch[idx : idx + 1])
 
         result = self.normalizer.transform(batch)
-
-        # Macenko defaults to [0, 255]; match [0, 1] float inputs for torchvision Normalize.
-        if unit_float_input and isinstance(self.normalizer, Macenko) and not getattr(self.normalizer, "normalize_to_0_1", False):
-            if result.is_floating_point() and bool(result.detach().amax() > 1.0):
-                result = result / 255.0
-
         return result.squeeze(0) if was_single else result
