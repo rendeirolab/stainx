@@ -47,7 +47,8 @@ def main():
     reference_img = Image.open(os.path.join(data_dir, "target.png")).convert("RGB")
     reference_tensor = v2.ToImage()(reference_img).to(device)
 
-    stain_transform = StainNormalizerTransform(method="macenko", mode="reference", reference=reference_tensor, device=device)
+    # normalize_to_0_1=True: Macenko returns [0,1] to match ToDtype(scale=True) + ImageNet Normalize.
+    stain_transform = StainNormalizerTransform(method="macenko", mode="reference", reference=reference_tensor, device=device, normalize_to_0_1=True)
 
     transforms = v2.Compose([BatchToImage(device=device), v2.ToDtype(torch.float32, scale=True), v2.RandomResizedCrop(size=(224, 224), antialias=True), stain_transform, v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
