@@ -94,11 +94,12 @@ class TestStainNormalizerTransform:
         out = t(img)
         assert out.shape == img.shape
 
-    def test_macenko_normalize_to_0_1(self):
+    def test_macenko_normalize_to_0_1_default(self):
         torch.manual_seed(3)
         src = torch.rand(2, 3, 64, 64)
         ref = torch.rand(1, 3, 64, 64)
-        t = StainNormalizerTransform(method="macenko", mode="reference", reference=ref, device="cpu", normalize_to_0_1=True)
+        t = StainNormalizerTransform(method="macenko", mode="reference", reference=ref, device="cpu")
+        assert t.normalizer.normalize_to_0_1 is True
         out = t(src)
         assert out.dtype.is_floating_point
         assert float(out.amin()) >= -1e-5
@@ -113,14 +114,62 @@ class TestStainNormalizerTransform:
         out = t(src)
         assert float(out.amax()) > 1.0
 
+    def test_float_jitter_above_one_not_treated_as_255(self):
+        """ColorJitter can push float >1; dtype gate must not silently /255."""
+        torch.manual_seed(9)
+        ref = torch.rand(1, 3, 64, 64)
+        src = (torch.rand(2, 3, 64, 64) * 1.3).clamp(0.0, 1.5)
+        assert float(src.amax()) > 1.0
+        t = StainNormalizerTransform(method="macenko", mode="reference", reference=ref, device="cpu")
+        out = t(src)
+        # Old max()>1 path would /255 → near-black mean.
+        assert float(out.mean()) > 0.05
+        assert float(out.amax()) <= 1.0 + 1e-4
+
     def test_normalize_to_0_1_matches_explicit_macenko(self):
         torch.manual_seed(5)
         src = torch.rand(2, 3, 64, 64)
         ref = torch.rand(1, 3, 64, 64)
-        t = StainNormalizerTransform(method="macenko", mode="reference", reference=ref, device="cpu", normalize_to_0_1=True)
+        t = StainNormalizerTransform(method="macenko", mode="reference", reference=ref, device="cpu")
         n = Macenko(device="cpu", normalize_to_0_1=True)
         n.fit(ref)
         assert torch.allclose(t(src), n.transform(src), rtol=0, atol=1e-5)
+
+    def test_prebuilt_normalize_flag_can_clear(self, reference):
+        n = Macenko(device="cpu", normalize_to_0_1=True)
+        n.fit(reference.float() / 255.0)
+        t = StainNormalizerTransform(mode="reference", normalizer=n, device="cpu", normalize_to_0_1=False)
+        assert t.normalizer.normalize_to_0_1 is False
+
+    def test_torch_cuda_plus_cpu_device_rejected(self, reference):
+        with pytest.raises(ValueError, match="requires a CUDA device"):
+            StainNormalizerTransform(method="reinhard", mode="reference", reference=reference, backend="torch_cuda", device="cpu")
+
+    def test_device_none_fit_cpu_forward_cuda(self, reference):
+        if not torch.cuda.is_available():
+            pytest.skip("CUDA required")
+        t = StainNormalizerTransform(method="reinhard", mode="reference", reference=reference)
+        assert torch.device(t.normalizer.device).type == "cpu"
+        src = (torch.rand(2, 3, 64, 64, device="cuda") * 255).round().to(torch.uint8)
+        out = t(src)
+        assert out.device.type == "cuda"
+        assert torch.device(t.normalizer.device).type == "cuda"
+
+    def test_macenko_normalize_to_0_1_torch_cuda(self):
+        if not torch.cuda.is_available():
+            pytest.skip("CUDA required")
+        from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
+
+        if not CUDA_AVAILABLE:
+            pytest.skip("torch_cuda extension unavailable")
+        torch.manual_seed(10)
+        ref = torch.rand(1, 3, 64, 64, device="cuda")
+        src = torch.rand(2, 3, 64, 64, device="cuda")
+        t = StainNormalizerTransform(method="macenko", mode="reference", reference=ref, backend="torch_cuda", device="cuda")
+        out = t(src)
+        assert out.device.type == "cuda"
+        assert float(out.amax()) <= 1.0 + 1e-4
+        assert float(out.mean()) > 0.05
 
     def test_batch_mode_refits(self, source):
         t = StainNormalizerTransform(method="reinhard", mode="batch", device="cpu", batch_ref_index=0)

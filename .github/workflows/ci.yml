@@ -289,19 +289,18 @@ jobs:
           UV_CONCURRENT_DOWNLOADS: 50
         run: |
           uv sync --group dev
+          uv pip install -e .
 
-      - name: Build CUDA extension (if CUDA available)
+      - name: Build CUDA extension (if CUDA runtime and nvcc available)
         shell: pwsh
         run: |
-          # Suppress numpy warnings on Windows Python 3.13 (MINGW-W64 experimental warnings)
           $env:PYTHONWARNINGS = "ignore::RuntimeWarning"
-          $ErrorActionPreference = "Continue"
-          uv run python setup.py build_ext --inplace 2>&1 | Out-Null
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "CUDA extension build skipped (CUDA not available on runner)"
-            $LASTEXITCODE = 0  # Reset exit code so step doesn't fail
+          uv run python -c "import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)"
+          if ($LASTEXITCODE -eq 0 -and (Get-Command nvcc -ErrorAction SilentlyContinue)) {
+            uv run python setup.py build_ext --inplace
+          } else {
+            Write-Host "CUDA runtime or nvcc not available; continuing with Torch backend only"
           }
-        continue-on-error: true
 
       - name: Run tests
         shell: pwsh

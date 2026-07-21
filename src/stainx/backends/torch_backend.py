@@ -15,8 +15,11 @@ class TorchBackendBase:
 
     @staticmethod
     def rgb_to_lab_torch(rgb: torch.Tensor, channel_axis: int = 1) -> torch.Tensor:
-        if rgb.max() > 1.0:
-            rgb = rgb / 255.0
+        # uint8 is [0, 255]; float is assumed already in [0, 1] (do not use max()>1).
+        if rgb.dtype == torch.uint8:
+            rgb = rgb.float() / 255.0
+        else:
+            rgb = rgb.float()
 
         if channel_axis == -1 or (channel_axis == 3 and rgb.ndim == 4):
             rgb = rgb.permute(0, 3, 1, 2)
@@ -102,18 +105,22 @@ class TorchBackendBase:
 
     @staticmethod
     def normalize_to_float_torch(images: torch.Tensor) -> torch.Tensor:
-        if images.max() > 1.0:
+        """Convert images to float in ``[0, 1]``.
+
+        ``uint8`` is treated as ``[0, 255]``. Floating tensors are assumed already
+        in ``[0, 1]`` — do not use ``max()>1`` (ColorJitter can push unit floats
+        above 1 and would silently mis-scale the batch).
+        """
+        if images.dtype == torch.uint8:
             return images.float() / 255.0
         return images.float()
 
     def images_to_uint8_torch(self, images: torch.Tensor) -> tuple[torch.Tensor, bool]:
-        if images.max() <= 1.0:
-            images_uint8 = (images * 255.0).clamp(0, 255).to(torch.uint8)
-            needs_scale_back = True
-        else:
-            images_uint8 = images.clamp(0, 255).to(torch.uint8)
-            needs_scale_back = False
-        return images_uint8, needs_scale_back
+        if images.dtype == torch.uint8:
+            return images, False
+        # Float is assumed [0, 1].
+        images_uint8 = (images.float() * 255.0).clamp(0, 255).to(torch.uint8)
+        return images_uint8, True
 
     def preserve_dtype_torch(self, result: torch.Tensor, original_dtype: torch.dtype, was_uint8_or_high_range: bool = False, result_in_0_255_range: bool = False) -> torch.Tensor:
         # If result is in [0, 1] range but we need [0, 255], scale it
@@ -199,7 +206,7 @@ class HistogramMatchingTorch(TorchBackendBase):
             per_channel_histograms = None
 
         original_dtype = images_normalized.dtype
-        was_uint8_or_high_range = images_normalized.dtype == torch.uint8 or images_normalized.max() > 1.0
+        was_uint8_or_high_range = images_normalized.dtype == torch.uint8
 
         images_uint8, needs_scale_back = self.images_to_uint8_torch(images_normalized)
 
@@ -306,8 +313,8 @@ class ReinhardTorch(TorchBackendBase):
         original_dtype = images.dtype
         was_uint8 = original_dtype == torch.uint8
 
-        # Check range once and normalize inline
-        images_float = images.float() / 255.0 if was_uint8 or images.max() > 1.0 else images.float()
+        # uint8 → [0,1]; float is assumed already [0,1] (no max()>1 heuristic).
+        images_float = images.float() / 255.0 if was_uint8 else images.float()
 
         lab = self.rgb_to_lab_torch(images_float, channel_axis=1)
 
@@ -323,8 +330,8 @@ class ReinhardTorch(TorchBackendBase):
         original_dtype = images.dtype
         was_uint8 = original_dtype == torch.uint8
 
-        # Check range once and normalize
-        if was_uint8 or images.max() > 1.0:
+        # uint8 → [0,1]; float is assumed already [0,1] (no max()>1 heuristic).
+        if was_uint8:
             images_float = images.float() / 255.0
             was_uint8_or_high_range = True
         else:
@@ -520,7 +527,7 @@ class MacenkoTorch(TorchBackendBase):
         target_max_conc = target_max_conc.to(self.device, non_blocking=True)
 
         original_dtype = images.dtype
-        was_uint8_or_high_range = images.dtype == torch.uint8 or images.max() > 1.0
+        was_uint8_or_high_range = images.dtype == torch.uint8
 
         images_float = self.normalize_to_float_torch(images)
 

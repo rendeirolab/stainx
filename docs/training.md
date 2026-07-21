@@ -14,7 +14,7 @@ transform = StainNormalizerTransform(
     mode="reference",          # preferred for supervised training
     reference=reference,
     device="cuda",             # optional; default keeps the input device
-    normalize_to_0_1=True,     # required before torchvision ImageNet Normalize
+    # normalize_to_0_1 defaults to True for method="macenko"
 )
 
 batch = torch.rand(8, 3, 224, 224)
@@ -30,14 +30,16 @@ out = transform(batch)         # still in [0, 1]
 
 Passing NHWC into Macenko/Reinhard raises — those backends would otherwise treat height as channels.
 
-### Value range (Macenko)
+### Value range
 
-| Input | Flag | Output |
-|-------|------|--------|
-| `uint8` / float in ~`[0, 255]` | default | ~`[0, 255]` |
-| float in `[0, 1]` (e.g. `ToDtype(..., scale=True)`) | **`normalize_to_0_1=True`** | `[0, 1]` |
+Range is gated on **dtype**, not `max()` / `amax()` (ColorJitter can push unit floats above 1; a max-based gate would silently `/255` and crush the batch).
 
-Always set `normalize_to_0_1=True` for unit-float training pipelines. There is no `amax()`-based auto-scale (it breaks after color jitter and syncs CUDA every step).
+| Input dtype | Assumed range | Macenko `normalize_to_0_1` | Output |
+|-------------|---------------|----------------------------|--------|
+| `uint8` | `[0, 255]` | `False` | ~`[0, 255]` |
+| float | **`[0, 1]`** (always) | default `True` for the transform | `[0, 1]` |
+
+Do not pass float tensors scaled to `[0, 255]` — convert to `uint8` or divide by 255 first. ColorJitter may exceed 1; that is fine and is **not** treated as a `[0, 255]` signal.
 
 ### Modes
 

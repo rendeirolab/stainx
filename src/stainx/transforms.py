@@ -46,10 +46,11 @@ class StainNormalizerTransform(nn.Module):
 
     Value range
     -----------
-    Macenko returns ``[0, 255]`` by default. For float ``[0, 1]`` pipelines
-    (e.g. ``ToDtype(..., scale=True)`` then ImageNet ``Normalize``), set
-    ``normalize_to_0_1=True``. There is no auto ``amax``-based scaling (that
-    misfires after jitter and forces a CUDA sync every step).
+    ``uint8`` inputs are ``[0, 255]``; **float inputs are always treated as**
+    ``[0, 1]`` (no ``max()>1`` heuristic — ColorJitter can exceed 1). For Macenko,
+    ``normalize_to_0_1`` defaults to ``True`` so float pipelines stay compatible
+    with ImageNet ``Normalize``. Pass ``normalize_to_0_1=False`` only for
+    uint8 / ``[0, 255]`` Macenko output.
 
     Device
     ------
@@ -66,7 +67,7 @@ class StainNormalizerTransform(nn.Module):
     histograms — call ``fit_reference`` again after loading weights.
     """
 
-    def __init__(self, method: MethodName = "macenko", *, mode: ModeName = "reference", reference: torch.Tensor | None = None, device: str | torch.device | None = None, backend: str | None = None, channel_axis: int = 1, batch_ref_index: int = 0, normalize_to_0_1: bool = False, normalizer: Any | None = None):
+    def __init__(self, method: MethodName = "macenko", *, mode: ModeName = "reference", reference: torch.Tensor | None = None, device: str | torch.device | None = None, backend: str | None = None, channel_axis: int = 1, batch_ref_index: int = 0, normalize_to_0_1: bool | None = None, normalizer: Any | None = None):
         """
         Args:
             method: Algorithm name (``"macenko"``, ``"reinhard"``, ``"histogram_matching"``).
@@ -76,7 +77,9 @@ class StainNormalizerTransform(nn.Module):
             backend: ``"torch"`` or ``"torch_cuda"`` (auto-selected if None).
             channel_axis: Histogram matching only (``1``/``-3`` NCHW, ``-1``/``3`` NHWC).
             batch_ref_index: Index within the batch used as reference when ``mode="batch"``.
-            normalize_to_0_1: Macenko output in ``[0, 1]`` (required for unit-float training pipelines).
+            normalize_to_0_1: Macenko output in ``[0, 1]``. Defaults to ``True`` for
+                ``method="macenko"``; ignored for other methods. Always synced onto a
+                prebuilt Macenko when set explicitly.
             normalizer: Optional pre-built normalizer (skips construction from ``method``).
         """
         super().__init__()
@@ -86,19 +89,24 @@ class StainNormalizerTransform(nn.Module):
         # None = follow input device each call (do not auto-pick CUDA at construct time).
         self.device = None if device is None else torch.device(device)
         self._requested_backend = backend
-        self._normalize_to_0_1 = normalize_to_0_1
 
         if mode not in ("reference", "batch"):
             raise ValueError(f"Unsupported mode '{mode}'. Use 'reference' or 'batch'.")
 
-        if normalize_to_0_1 and method != "macenko" and normalizer is None:
-            raise ValueError("normalize_to_0_1 only applies to Macenko (method='macenko').")
+        if backend == "torch_cuda" and self.device is not None and self.device.type != "cuda":
+            raise ValueError(f"backend='torch_cuda' requires a CUDA device, got {self.device}.")
+
+        # Training-safe default for method="macenko"; leave prebuilt Macenko alone unless set.
+        explicit_n01 = normalize_to_0_1
+        if normalize_to_0_1 is None:
+            normalize_to_0_1 = method == "macenko" and normalizer is None
 
         if normalizer is not None:
             self.normalizer = normalizer
-            if normalize_to_0_1 and isinstance(self.normalizer, Macenko):
-                self.normalizer.normalize_to_0_1 = True
-            elif normalize_to_0_1 and not isinstance(self.normalizer, Macenko):
+            if isinstance(self.normalizer, Macenko):
+                if explicit_n01 is not None:
+                    self.normalizer.normalize_to_0_1 = bool(explicit_n01)
+            elif explicit_n01:
                 raise ValueError("normalize_to_0_1 only applies to Macenko normalizers.")
             if not isinstance(self.normalizer, HistogramMatching) and channel_axis not in _CHANNELS_FIRST:
                 raise ValueError(f"channel_axis={channel_axis} is only supported for histogram_matching; Macenko/Reinhard require NCHW (channel_axis=1).")
@@ -107,12 +115,14 @@ class StainNormalizerTransform(nn.Module):
                 raise ValueError(f"Unknown method '{method}'. Choose from {sorted(_METHOD_MAP)}")
             if method != "histogram_matching" and channel_axis not in _CHANNELS_FIRST:
                 raise ValueError(f"channel_axis={channel_axis} is only supported for histogram_matching; {method} requires NCHW (channel_axis=1).")
+            if explicit_n01 and method != "macenko":
+                raise ValueError("normalize_to_0_1 only applies to Macenko (method='macenko').")
             cls = _METHOD_MAP[method]
             norm_device = self._initial_norm_device(backend)
             if method == "histogram_matching":
                 self.normalizer = cls(device=norm_device, backend=backend, channel_axis=channel_axis)
             elif method == "macenko":
-                self.normalizer = cls(device=norm_device, backend=backend, normalize_to_0_1=normalize_to_0_1)
+                self.normalizer = cls(device=norm_device, backend=backend, normalize_to_0_1=bool(normalize_to_0_1))
             else:
                 self.normalizer = cls(device=norm_device, backend=backend)
 

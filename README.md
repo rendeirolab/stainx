@@ -77,7 +77,7 @@ transform = StainNormalizerTransform(
     mode="reference",
     reference=reference_image,
     device="cuda",
-    normalize_to_0_1=True,  # keep [0, 1] for torchvision Normalize
+    # normalize_to_0_1 defaults to True for Macenko (float [0,1] pipelines)
 )
 batch_out = transform(source_images)
 ```

@@ -102,11 +102,11 @@ torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matri
     TORCH_CHECK(input_images.device() == target_max_conc.device(), "input_images and target_max_conc device mismatch");
 
     torch::Tensor images_float;
+    // uint8 is [0,255]; float is assumed already [0,1] (no max()>1 heuristic / sync).
     if (input_images.dtype() == torch::kUInt8) {
         images_float = input_images.to(torch::kFloat32) / 255.0f;
     } else {
         images_float = input_images.to(torch::kFloat32);
-        if (images_float.max().item<float>() > 1.0f) { images_float = images_float / 255.0f; }
     }
 
     const int64_t N = images_float.size(0);
