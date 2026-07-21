@@ -20,6 +20,7 @@ ModeName = Literal["reference", "batch"]
 _METHOD_MAP = {"macenko": Macenko, "reinhard": Reinhard, "histogram_matching": HistogramMatching}
 _CHANNELS_FIRST = frozenset({1, -3})
 _CHANNELS_LAST = frozenset({-1, 3})
+_FIT_TENSOR_ATTRS = ("_stain_matrix", "_target_max_conc", "_concentration_matrix", "_reference_histogram", "_ref_vals", "_ref_cdf", "_ref_histograms_256", "_reference_mean", "_reference_std")
 
 
 class StainNormalizerTransform(nn.Module):
@@ -52,8 +53,11 @@ class StainNormalizerTransform(nn.Module):
 
     Device
     ------
-    Default ``device=None`` keeps tensors on the **input** device (safe for CPU
-    DataLoader workers). Pass ``device="cuda"`` explicitly to move batches.
+    Default ``device=None`` keeps tensors on the **input** device and syncs the
+    inner normalizer / backend selection to that device on first fit/forward
+    (so CUDA inputs can auto-select ``torch_cuda``). Pass ``device="cuda"`` to
+    always move batches. ``backend="torch_cuda"`` with ``device=None`` requires
+    CUDA inputs (or an explicit CUDA ``device``).
 
     Serialization
     -------------
@@ -79,12 +83,16 @@ class StainNormalizerTransform(nn.Module):
         self.mode = mode
         self.channel_axis = channel_axis
         self.batch_ref_index = batch_ref_index
-        # None = follow input device each call (do not auto-pick CUDA).
+        # None = follow input device each call (do not auto-pick CUDA at construct time).
         self.device = None if device is None else torch.device(device)
+        self._requested_backend = backend
         self._normalize_to_0_1 = normalize_to_0_1
 
         if mode not in ("reference", "batch"):
             raise ValueError(f"Unsupported mode '{mode}'. Use 'reference' or 'batch'.")
+
+        if normalize_to_0_1 and method != "macenko" and normalizer is None:
+            raise ValueError("normalize_to_0_1 only applies to Macenko (method='macenko').")
 
         if normalizer is not None:
             self.normalizer = normalizer
@@ -100,7 +108,7 @@ class StainNormalizerTransform(nn.Module):
             if method != "histogram_matching" and channel_axis not in _CHANNELS_FIRST:
                 raise ValueError(f"channel_axis={channel_axis} is only supported for histogram_matching; {method} requires NCHW (channel_axis=1).")
             cls = _METHOD_MAP[method]
-            norm_device = self.device if self.device is not None else "cpu"
+            norm_device = self._initial_norm_device(backend)
             if method == "histogram_matching":
                 self.normalizer = cls(device=norm_device, backend=backend, channel_axis=channel_axis)
             elif method == "macenko":
@@ -114,6 +122,16 @@ class StainNormalizerTransform(nn.Module):
             if reference is not None:
                 self.fit_reference(reference)
 
+    def _initial_norm_device(self, backend: str | None) -> torch.device | str:
+        if self.device is not None:
+            return self.device
+        if backend == "torch_cuda":
+            if not torch.cuda.is_available():
+                raise ValueError("backend='torch_cuda' requires a CUDA device; pass device='cuda' or use CUDA input tensors with device=None.")
+            return torch.device("cuda")
+        # Placeholder until the first tensor reveals the input device.
+        return "cpu"
+
     def fit_reference(self, reference: torch.Tensor) -> StainNormalizerTransform:
         """Fit the underlying normalizer on a reference image or batch."""
         ref = self._prepare(reference)
@@ -122,6 +140,33 @@ class StainNormalizerTransform(nn.Module):
 
     def _target_device(self, images: torch.Tensor) -> torch.device:
         return self.device if self.device is not None else images.device
+
+    def _sync_normalizer_device(self, device: torch.device) -> None:
+        """Keep inner normalizer + backend selection on the batch device."""
+        device = torch.device(device)
+        current = torch.device(self.normalizer.device)
+        if self._requested_backend == "torch_cuda" and device.type != "cuda":
+            raise ValueError(f"backend='torch_cuda' requires CUDA tensors when device=None; got {device}.")
+
+        if current == device:
+            # Still refresh auto backend if a placeholder CPU construct never saw CUDA.
+            if self._requested_backend is None and device.type == "cuda" and getattr(self.normalizer, "backend", None) == "torch":
+                self.normalizer.backend = self.normalizer._select_backend()
+                self.normalizer._backend_impl = None
+            return
+
+        self.normalizer.device = device
+        self.normalizer._backend_impl = None
+        if self._requested_backend is None and hasattr(self.normalizer, "_select_backend"):
+            self.normalizer.backend = self.normalizer._select_backend()
+
+        for name in _FIT_TENSOR_ATTRS:
+            value = getattr(self.normalizer, name, None)
+            if isinstance(value, torch.Tensor):
+                setattr(self.normalizer, name, value.to(device))
+            elif isinstance(value, (list, tuple)) and value and all(isinstance(v, torch.Tensor) for v in value):
+                moved = [v.to(device) for v in value]
+                setattr(self.normalizer, name, type(value)(moved))
 
     def _prepare(self, images: torch.Tensor) -> torch.Tensor:
         if images.dim() == 3:
@@ -137,7 +182,9 @@ class StainNormalizerTransform(nn.Module):
             if images.shape[1] != 3:
                 raise ValueError(f"Expected NCHW with C=3 (got shape {tuple(images.shape)}). Macenko/Reinhard do not accept NHWC; use channel_axis=-1 only with histogram_matching, or permute to NCHW first.")
 
-        return images.to(self._target_device(images))
+        target = self._target_device(images)
+        self._sync_normalizer_device(target)
+        return images.to(target)
 
     def forward(self, img: torch.Tensor) -> torch.Tensor:
         was_single = img.dim() == 3

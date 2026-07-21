@@ -50,7 +50,10 @@ Always set `normalize_to_0_1=True` for unit-float training pipelines. There is n
 
 ### Device
 
-Default `device=None` keeps batches on the **input** device (CPU DataLoader workers stay on CPU). Pass `device="cuda"` only when you intentionally move data onto the GPU inside the transform.
+Default `device=None` keeps batches on the **input** device and syncs the inner
+normalizer (and auto backend selection) to that device on first fit/forward.
+Pass `device="cuda"` to always move data onto the GPU inside the transform.
+`backend="torch_cuda"` with `device=None` requires CUDA input tensors.
 
 ### Checkpointing
 
