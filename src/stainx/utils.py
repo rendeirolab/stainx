@@ -117,14 +117,26 @@ class ChannelFormatConverter:
         return images_np
 
     def prepare_for_normalizer(self, images: torch.Tensor | np.ndarray | Any) -> torch.Tensor | np.ndarray | Any:
+        """Return tensors in channels-first layout for backends that expect NCHW.
+
+        Channels-first inputs are returned unchanged (same device). Channels-last
+        ``NHWC`` / ``HWC`` inputs are converted with ``(0, 3, 1, 2)`` / ``(2, 0, 1)``.
+        After converting channels-last data, use ``channel_axis=1`` on the normalizer.
+        """
         if self.is_channels_first:
-            return self._cpu(images)
-        images = self._cpu(images)
-        images = self._squeeze(images, dim=0)
-        images = self._transpose(images, (2, 0, 1))
-        if self._is_torch_tensor(images):
-            return images.unsqueeze(0)
-        return np.expand_dims(images, axis=0)
+            return images
+
+        ndim = images.ndim if hasattr(images, "ndim") else len(images.shape)
+        if ndim == 4:
+            # (N, H, W, C) → (N, C, H, W) — do not squeeze the batch axis
+            return self._transpose(images, (0, 3, 1, 2))
+        if ndim == 3:
+            # (H, W, C) → (1, C, H, W)
+            images = self._transpose(images, (2, 0, 1))
+            if self._is_torch_tensor(images):
+                return images.unsqueeze(0)
+            return np.expand_dims(images, axis=0)
+        raise ValueError(f"prepare_for_normalizer expects 3D or 4D images, got ndim={ndim}")
 
     def to_chw(self, images: torch.Tensor | np.ndarray | Any, squeeze_batch: bool = True, return_torch: bool = True) -> torch.Tensor | np.ndarray | Any:
         result = self._cpu(images)
