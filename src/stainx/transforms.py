@@ -108,7 +108,14 @@ class StainNormalizerTransform(nn.Module):
                     self.normalizer.normalize_to_0_1 = bool(explicit_n01)
             elif explicit_n01:
                 raise ValueError("normalize_to_0_1 only applies to Macenko normalizers.")
-            if not isinstance(self.normalizer, HistogramMatching) and channel_axis not in _CHANNELS_FIRST:
+            if isinstance(self.normalizer, HistogramMatching):
+                # Layout must follow the prebuilt normalizer — default channel_axis=1 must
+                # not leave _prepare validating NCHW while HM permutes as NHWC.
+                norm_axis = int(self.normalizer.channel_axis)
+                if channel_axis != 1 and not self._same_channel_layout(channel_axis, norm_axis):
+                    raise ValueError(f"channel_axis={channel_axis} conflicts with prebuilt HistogramMatching(channel_axis={norm_axis}).")
+                self.channel_axis = norm_axis
+            elif channel_axis not in _CHANNELS_FIRST:
                 raise ValueError(f"channel_axis={channel_axis} is only supported for histogram_matching; Macenko/Reinhard require NCHW (channel_axis=1).")
         else:
             if method not in _METHOD_MAP:
@@ -131,6 +138,18 @@ class StainNormalizerTransform(nn.Module):
                 raise ValueError("mode='reference' requires a reference tensor (or a pre-fitted normalizer).")
             if reference is not None:
                 self.fit_reference(reference)
+
+    @staticmethod
+    def _same_channel_layout(a: int, b: int) -> bool:
+        a_first, b_first = a in _CHANNELS_FIRST, b in _CHANNELS_FIRST
+        a_last, b_last = a in _CHANNELS_LAST, b in _CHANNELS_LAST
+        return (a_first and b_first) or (a_last and b_last)
+
+    def _layout_channel_axis(self) -> int:
+        """Axis used for layout checks — HM always follows the inner normalizer."""
+        if isinstance(self.normalizer, HistogramMatching):
+            return int(self.normalizer.channel_axis)
+        return self.channel_axis
 
     def _initial_norm_device(self, backend: str | None) -> torch.device | str:
         if self.device is not None:
@@ -184,7 +203,7 @@ class StainNormalizerTransform(nn.Module):
         if images.dim() != 4:
             raise ValueError(f"Expected CHW/NCHW or HWC/NHWC image tensor, got shape {tuple(images.shape)}")
 
-        if isinstance(self.normalizer, HistogramMatching) and self.channel_axis in _CHANNELS_LAST:
+        if isinstance(self.normalizer, HistogramMatching) and self._layout_channel_axis() in _CHANNELS_LAST:
             if images.shape[-1] != 3:
                 raise ValueError(f"channels-last histogram matching expects shape (N, H, W, 3), got {tuple(images.shape)}")
         else:

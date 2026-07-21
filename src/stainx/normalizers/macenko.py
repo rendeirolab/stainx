@@ -9,6 +9,14 @@ from stainx.normalizers._template import NormalizerTemplate
 
 
 class Macenko(NormalizerTemplate):
+    """Macenko stain normalization.
+
+    ``normalize_to_0_1`` defaults to ``False`` here (output ~``[0, 255]``).
+    ``StainNormalizerTransform(method="macenko")`` defaults it to ``True`` for
+    float ``[0, 1]`` training pipelines — prefer the transform there, or set the
+    flag explicitly on this class.
+    """
+
     def __init__(self, device: Any | None = None, backend: str | None = None, normalize_to_0_1: bool = False):
         self.normalize_to_0_1 = normalize_to_0_1
         super().__init__(device=device, backend=backend)

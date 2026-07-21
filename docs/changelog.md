@@ -7,11 +7,12 @@
 - **Torch-only**: removed CuPy backends, `stainx_cuda_cupy`, and `stainx[cupy]`
 - Valid backends are now only `"torch"` and `"torch_cuda"`
 - No backward compatibility with 0.0.x import paths or CuPy array inputs
+- **Input range is dtype-gated**: `uint8` → `[0, 255]`; **float is always treated as `[0, 1]`** (no `max()>1` / `amax()` heuristic). Calling `.float()` on uint8 without `/255` is silently wrong — keep `uint8` or scale explicitly. ColorJitter may push floats slightly above 1; that is fine and is not treated as a `[0, 255]` signal.
 - **Migration**: CuPy users should pin `stainx<0.1` or switch inputs/backends to Torch (`backend="torch"` / `"torch_cuda"`)
 
 ### Added
 
-- Public `StainNormalizerTransform` (`mode="reference"` | `"batch"`) for DataLoader pipelines
+- Public `StainNormalizerTransform` (`mode="reference"` | `"batch"`) for DataLoader pipelines (`normalize_to_0_1` defaults to `True` for Macenko)
 
 ### Removed
 
@@ -19,7 +20,7 @@
 
 ### Testing
 
-- Test suite focuses on **relative error vs external baselines** (torchstain / skimage) for each normalizer × backend variant (`torch`, `torch_cuda`)
+- Correctness suite compares each normalizer × backend (`torch`, `torch_cuda`) to external baselines (torchstain / skimage) with **absolute** `atol` / `MACENKO_ATOL` (plus HE / maxC floors for Macenko)
 
 ### Changed
 

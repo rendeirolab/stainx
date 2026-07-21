@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from stainx import Macenko, StainNormalizerTransform
+from stainx import HistogramMatching, Macenko, StainNormalizerTransform
 from stainx.utils import ChannelFormatConverter
 
 
@@ -184,6 +184,23 @@ class TestStainNormalizerTransform:
         t = StainNormalizerTransform(method="histogram_matching", mode="reference", reference=ref, device="cpu", channel_axis=-1)
         out = t(src)
         assert out.shape == src.shape
+
+    def test_prebuilt_hm_syncs_channel_axis_from_normalizer(self):
+        """Default transform channel_axis=1 must not desync from prebuilt NHWC HM."""
+        torch.manual_seed(11)
+        ref = (torch.rand(1, 32, 32, 3) * 255).round().to(torch.uint8)
+        src = (torch.rand(2, 32, 32, 3) * 255).round().to(torch.uint8)
+        n = HistogramMatching(device="cpu", channel_axis=-1)
+        n.fit(ref)
+        t = StainNormalizerTransform(mode="reference", normalizer=n, device="cpu")
+        assert t.channel_axis == -1
+        out = t(src)
+        assert out.shape == src.shape
+
+    def test_prebuilt_hm_rejects_conflicting_channel_axis(self):
+        n = HistogramMatching(device="cpu", channel_axis=1)
+        with pytest.raises(ValueError, match="conflicts with prebuilt"):
+            StainNormalizerTransform(mode="reference", normalizer=n, device="cpu", channel_axis=-1, reference=(torch.rand(1, 3, 8, 8) * 255).round().to(torch.uint8))
 
     def test_macenko_rejects_nhwc_channel_axis(self, reference):
         with pytest.raises(ValueError, match="only supported for histogram_matching"):

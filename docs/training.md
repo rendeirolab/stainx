@@ -34,10 +34,13 @@ Passing NHWC into Macenko/Reinhard raises — those backends would otherwise tre
 
 Range is gated on **dtype**, not `max()` / `amax()` (ColorJitter can push unit floats above 1; a max-based gate would silently `/255` and crush the batch).
 
-| Input dtype | Assumed range | Macenko `normalize_to_0_1` | Output |
-|-------------|---------------|----------------------------|--------|
-| `uint8` | `[0, 255]` | `False` | ~`[0, 255]` |
-| float | **`[0, 1]`** (always) | default `True` for the transform | `[0, 1]` |
+| Input dtype | Assumed range | Macenko via `StainNormalizerTransform` | Output |
+|-------------|---------------|----------------------------------------|--------|
+| `uint8` | `[0, 255]` | default `normalize_to_0_1=True` | float `[0, 1]` |
+| `uint8` | `[0, 255]` | `normalize_to_0_1=False` | ~`[0, 255]` |
+| float | **`[0, 1]`** (always) | default `True` | `[0, 1]` |
+
+Low-level `Macenko(...)` still defaults `normalize_to_0_1=False` (uint8 / `[0, 255]` output). Prefer the transform for training pipelines.
 
 Do not pass float tensors scaled to `[0, 255]` — convert to `uint8` or divide by 255 first. ColorJitter may exceed 1; that is fine and is **not** treated as a `[0, 255]` signal.
 
