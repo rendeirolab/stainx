@@ -59,6 +59,34 @@ class TestStainNormalizerTransform:
         out = t(source)
         assert out.device == source.device
 
+    def test_default_device_follows_cuda_input(self, reference):
+        if not torch.cuda.is_available():
+            pytest.skip("CUDA required")
+        torch.manual_seed(8)
+        src = (torch.rand(2, 3, 64, 64, device="cuda") * 255).round().to(torch.uint8)
+        ref = reference.to("cuda")
+        t = StainNormalizerTransform(method="reinhard", mode="reference", reference=ref)
+        out = t(src)
+        assert out.device.type == "cuda"
+        assert torch.device(t.normalizer.device).type == "cuda"
+
+    def test_torch_cuda_backend_with_device_none_requires_cuda_input(self, reference):
+        if not torch.cuda.is_available():
+            pytest.skip("CUDA required")
+        from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
+
+        if not CUDA_AVAILABLE:
+            pytest.skip("torch_cuda extension unavailable")
+        ref = reference.to("cuda")
+        src = (torch.rand(1, 3, 64, 64, device="cuda") * 255).round().to(torch.uint8)
+        t = StainNormalizerTransform(method="reinhard", mode="reference", reference=ref, backend="torch_cuda")
+        out = t(src)
+        assert out.device.type == "cuda"
+
+    def test_normalize_to_0_1_rejected_for_reinhard(self, reference):
+        with pytest.raises(ValueError, match="only applies to Macenko"):
+            StainNormalizerTransform(method="reinhard", mode="reference", reference=reference, normalize_to_0_1=True)
+
     def test_single_image_roundtrip_rank(self, reference):
         torch.manual_seed(2)
         img = (torch.rand(3, 64, 64) * 255).round().to(torch.uint8)
