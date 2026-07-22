@@ -71,6 +71,7 @@ benchmark = [
     "numba>=0.60.0",
     "umap-learn>=0.5.9",
     "torchstain==1.4.1",  # Pin same revision as correctness tests (dev group)
+    "staintools",  # Reinhard / Macenko CPU reference (StainTools)
     "scikit-image",
     "matplotlib",
     "numpy<2.0.0",  # Constrain numpy for pandas 1.5.3 compatibility (from slideflow<3.0.0)
