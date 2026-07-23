@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import pytest
 import torch
+import torch.nn.functional as F
 from skimage.exposure import match_histograms
 from torchstain.torch.normalizers import TorchMacenkoNormalizer, TorchReinhardNormalizer
 
@@ -27,13 +28,36 @@ from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE as TORCH_CUDA_AVAI
 from stainx.utils import ChannelFormatConverter
 
 # Image tensors are ~[0, 255]. Reinhard / HM: at most one grey level vs baselines.
-# Macenko on CUDA: OD/log is computed on device; after CPU float32 cov (stain-plane
-# parity), residual vs torchstain stays within two grey levels. Also enforce a
-# mean absolute error floor so mid-tone drift cannot hide under a few hot pixels.
+# Macenko needs a well-defined stain plane: pure RGB noise makes the OD covariance
+# near-isotropic, so the leading eigenspace (and H/E split) is eigensolver-dependent
+# and parity vs torchstain is ill-posed. Macenko fixtures are therefore synthesized
+# from the Beer–Lambert model with known HE vectors (Reinhard / HM stay on noise).
 RTOL = 0.0
 ATOL = 1.0
 MACENKO_ATOL = 2.0
 MACENKO_MAE = 0.35
+
+# torchstain default HERef (columns = hematoxylin, eosin).
+_HE_REF = torch.tensor([[0.5626, 0.2159], [0.7201, 0.8012], [0.4062, 0.5581]], dtype=torch.float32)
+_IO = 240.0
+
+
+def _synthetic_he_tile(h: int, w: int, seed: int, he_scale: float = 1.0) -> torch.Tensor:
+    """NCHW uint8 tile from Beer–Lambert: ``I = Io * exp(-(HE @ C))``."""
+    g = torch.Generator().manual_seed(seed)
+    # Low-frequency concentration maps (upsampled noise) → spatially coherent stain.
+    gh, gw = max(h // 8, 1), max(w // 8, 1)
+    c_h = F.interpolate(torch.rand(1, 1, gh, gw, generator=g), size=(h, w), mode="bilinear", align_corners=False).squeeze()
+    c_e = F.interpolate(torch.rand(1, 1, gh, gw, generator=g), size=(h, w), mode="bilinear", align_corners=False).squeeze()
+    concentrations = torch.stack([0.3 + 1.8 * c_h, 0.2 + 1.0 * c_e], dim=0)  # (2, H, W)
+    od = torch.einsum("cs,shp->chp", _HE_REF * he_scale, concentrations)
+    return (_IO * torch.exp(-od)).clamp(0, 255).round().to(torch.uint8).unsqueeze(0)
+
+
+def _macenko_pair(image_hw: tuple[int, int], device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+    """Reference + source synthetic H&E tiles at ``image_hw`` (different stain strength)."""
+    h, w = image_hw
+    return _synthetic_he_tile(h, w, seed=42, he_scale=1.0).to(device), _synthetic_he_tile(h, w, seed=123, he_scale=1.15).to(device)
 
 
 def _backend_params():
@@ -102,7 +126,9 @@ class TestAgainstBaselines:
 
         assert torch.allclose(result, baseline_tensor, rtol=RTOL, atol=ATOL), f"Reinhard mismatch vs torchstain (backend={backend}, hw={image_hw})"
 
-    def test_macenko_vs_torchstain(self, reference_image, source_image, device, backend, image_hw):
+    def test_macenko_vs_torchstain(self, device, backend, image_hw):
+        # Synthetic Beer–Lambert H&E: Macenko needs a well-defined stain plane (see module note).
+        reference_image, source_image = _macenko_pair(image_hw, device)
         ref_chw = reference_image.squeeze(0).cpu()
         src_chw = source_image.squeeze(0).cpu()
 
