@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 from skimage.exposure import match_histograms
 from torchstain.torch.normalizers import TorchMacenkoNormalizer, TorchReinhardNormalizer
 
@@ -31,7 +31,7 @@ from stainx.utils import ChannelFormatConverter
 # Macenko needs a well-defined stain plane: pure RGB noise makes the OD covariance
 # near-isotropic, so the leading eigenspace (and H/E split) is eigensolver-dependent
 # and parity vs torchstain is ill-posed. Macenko fixtures are therefore synthesized
-# from the Beer–Lambert model with known HE vectors (Reinhard / HM stay on noise).
+# from the Beer-Lambert model with known HE vectors (Reinhard / HM stay on noise).
 RTOL = 0.0
 ATOL = 1.0
 MACENKO_ATOL = 2.0
@@ -43,7 +43,7 @@ _IO = 240.0
 
 
 def _synthetic_he_tile(h: int, w: int, seed: int, he_scale: float = 1.0) -> torch.Tensor:
-    """NCHW uint8 tile from Beer–Lambert: ``I = Io * exp(-(HE @ C))``."""
+    """NCHW uint8 tile from Beer-Lambert: ``I = Io * exp(-(HE @ C))``."""
     g = torch.Generator().manual_seed(seed)
     # Low-frequency concentration maps (upsampled noise) → spatially coherent stain.
     gh, gw = max(h // 8, 1), max(w // 8, 1)
@@ -127,7 +127,7 @@ class TestAgainstBaselines:
         assert torch.allclose(result, baseline_tensor, rtol=RTOL, atol=ATOL), f"Reinhard mismatch vs torchstain (backend={backend}, hw={image_hw})"
 
     def test_macenko_vs_torchstain(self, device, backend, image_hw):
-        # Synthetic Beer–Lambert H&E: Macenko needs a well-defined stain plane (see module note).
+        # Synthetic Beer-Lambert H&E: Macenko needs a well-defined stain plane (see module note).
         reference_image, source_image = _macenko_pair(image_hw, device)
         ref_chw = reference_image.squeeze(0).cpu()
         src_chw = source_image.squeeze(0).cpu()

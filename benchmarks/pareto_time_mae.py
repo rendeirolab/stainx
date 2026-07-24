@@ -21,9 +21,11 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 import slideflow.norm as sf_norm
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
+from adjustText import adjust_text
 from PIL import Image
 from skimage.exposure import match_histograms
 from torchstain.torch.normalizers import TorchMacenkoNormalizer, TorchReinhardNormalizer
@@ -32,12 +34,12 @@ from stainx import HistogramMatching, Macenko, Reinhard
 from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
 
 BATCH, H, W = 128, 256, 256
-WARMUP, RUNS = 5, 20
+WARMUP, RUNS = 3, 10
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "examples" / "data"
 OUT = Path(__file__).resolve().parent / "logs" / "pareto_time_mae.png"
 
-METHOD_COLOR = {"Macenko": "#96324b", "Reinhard": "#e0a02e", "HistogramMatching": "#c4788a"}
+METHOD_COLOR = {"Macenko": "#9b2335", "Reinhard": "#d4a017", "HistogramMatching": "#b56b7a"}
 DEVICE_MARKER = {"CPU": "o", "GPU": "s"}
 MAE_FLOOR = 1e-4
 MAE_MAX = 255.0  # vertical reference: max possible grey-level MAE
@@ -111,10 +113,7 @@ def _staintools_reinhard():
         pre = types.ModuleType("staintools.preprocessing")
         pre.__path__ = [str(root / "preprocessing")]
         sys.modules["staintools.preprocessing"] = pre
-        for name, rel in (
-            ("staintools.preprocessing.input_validation", "preprocessing/input_validation.py"),
-            ("staintools.reinhard_color_normalizer", "reinhard_color_normalizer.py"),
-        ):
+        for name, rel in (("staintools.preprocessing.input_validation", "preprocessing/input_validation.py"), ("staintools.reinhard_color_normalizer", "reinhard_color_normalizer.py")):
             spec = importlib.util.spec_from_file_location(name, root / rel)
             mod = importlib.util.module_from_spec(spec)
             sys.modules[name] = mod
@@ -211,47 +210,120 @@ def collect_results(ref: torch.Tensor, src: torch.Tensor, baselines: dict[str, t
 
 def plot(results: list[dict], path: Path, mae_max: float = MAE_MAX) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(9, 6))
 
+    # Journal-style typography (serif; sizes typical for single-column figure panels).
+    sns.set_theme(style="white", context="paper")
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "Times", "Liberation Serif", "DejaVu Serif"],
+        "mathtext.fontset": "stix",
+        "axes.labelsize": 10,
+        "axes.titlesize": 10,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 8,
+        "legend.title_fontsize": 8,
+        "xtick.major.size": 4,
+        "ytick.major.size": 4,
+        "xtick.major.width": 0.8,
+        "ytick.major.width": 0.8,
+        "xtick.bottom": True,
+        "ytick.left": True,
+        "pdf.fonttype": 42,  # editable text in Illustrator / Word
+        "ps.fonttype": 42,
+    })
+    fig, ax = plt.subplots(figsize=(7.2, 5.0), dpi=300)  # ~single-column width at 300 dpi
+    ax.set_facecolor("white")
+    fig.patch.set_facecolor("white")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+
+    # Light major grid on white
+    ax.grid(True, which="major", color="#e8e8e8", linewidth=0.7)
+    ax.grid(False, which="minor")
+
+    texts = []
+    xs_pts, ys_pts = [], []
     for p in results:
         x = max(p["mae"], MAE_FLOOR)
-        ax.scatter(x, p["imgs_per_s"], marker=DEVICE_MARKER[p["device"]], s=110, c=METHOD_COLOR[p["method"]], edgecolors="k", linewidths=0.6, zorder=3)
-        ax.annotate(p["package"], (x, p["imgs_per_s"]), textcoords="offset points", xytext=(6, 4), fontsize=7, alpha=0.85)
+        y = p["imgs_per_s"]
+        xs_pts.append(x)
+        ys_pts.append(y)
+        ax.scatter(x, y, marker=DEVICE_MARKER[p["device"]], s=90, c=METHOD_COLOR[p["method"]], edgecolors="black", linewidths=1, zorder=3, alpha=0.75)
+        texts.append(ax.text(x, y, p["package"], fontsize=7, color="#333333", alpha=0.95, bbox={"boxstyle": "round,pad=0.12", "facecolor": "white", "edgecolor": "none", "alpha": 0.8}, zorder=4))
+
+    ax.axvline(mae_max, color="#555555", linestyle=":", linewidth=1.4, zorder=1, alpha=0.8, label=f"Maximum mean absolute error ({mae_max:.0f})")
 
     for method, color in METHOD_COLOR.items():
         front = _pareto_front([p for p in results if p["method"] == method])
-        label = f"Pareto {method if method != 'HistogramMatching' else 'HM'}"
         xs = [max(p["mae"], MAE_FLOOR) for p in front]
         ys = [p["imgs_per_s"] for p in front]
         if len(front) >= 2:
-            ax.plot(xs, ys, "--", color=color, linewidth=1.6, zorder=2, label=label)
+            ax.plot(xs, ys, "--", color=color, linewidth=1.5, zorder=2, alpha=0.85, label=f"Pareto {method}")
         elif len(front) == 1:
-            ax.scatter(xs, ys, marker="x", c=color, s=80, zorder=2, label=label)
-
-    ax.axvline(mae_max, color="#333333", linestyle=":", linewidth=1.8, zorder=1, label=f"max MAE ({mae_max:.0f})")
+            ax.scatter(xs, ys, marker="x", c=color, s=60, zorder=2, label=f"Pareto {method}")
 
     for method, color in METHOD_COLOR.items():
-        ax.scatter([], [], marker="o", c=color, s=100, label=method, edgecolors="k")
+        ax.scatter([], [], marker="o", c=color, s=70, label=method, edgecolors="black", linewidths=0.7, alpha=0.75)
     for device, marker in DEVICE_MARKER.items():
-        ax.scatter([], [], marker=marker, c="gray", s=100, label=device, edgecolors="k")
+        ax.scatter([], [], marker=marker, c="#888888", s=70, label=device, edgecolors="black", linewidths=0.7, alpha=0.75)
 
-    ax.set_xlabel("MAE vs stable baseline  ↓ better")
-    ax.set_ylabel("Throughput (img/s)  ↑ better")
-    ax.set_title(f"Stain normalization: MAE vs throughput  (batch={BATCH}, {H}x{W}, warmup={WARMUP}, runs={RUNS})")
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-    ax.grid(True, which="both", alpha=0.3)
-    ax.legend(loc="best", fontsize=9)
+    ax.set_xlabel("Mean absolute error vs stable baseline  (lower is better)")
+    ax.set_ylabel("Throughput (images per second)  (higher is better)")
+
+    # Plain numeric ticks, always including maximum mean absolute error (255) on the axis.
+    x_ticks = [MAE_FLOOR, 0.001, 0.01, 0.1, 1, 10, 100, mae_max]
+    ax.set_xticks(x_ticks)
+    ax.set_xlim(MAE_FLOOR * 0.7, mae_max * 1.15)
+
+    def _plain_num(v: float, _pos=None) -> str:
+        if abs(v - mae_max) / mae_max < 1e-6:
+            return f"{mae_max:.0f}"
+        if v >= 1:
+            return f"{v:.0f}"
+        return f"{v:.4g}"
+
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(_plain_num))
+    ax.xaxis.set_minor_locator(plt.NullLocator())
+
+    # Nudge labels just enough to avoid overlap, keeping them near their points.
+    adjust_text(
+        texts,
+        x=xs_pts,
+        y=ys_pts,
+        ax=ax,
+        force_text=(0.4, 0.5),
+        force_static=(0.3, 0.4),
+        force_explode=(0.6, 0.8),
+        force_pull=(0.02, 0.02),
+        expand=(1.15, 1.25),
+        max_move=(35, 35),
+        explode_radius="auto",
+        ensure_inside_axes=True,
+        expand_axes=False,
+        iter_lim=400,
+        min_arrow_len=5,
+        arrowprops={"arrowstyle": "-", "color": "#bbbbbb", "lw": 0.45, "alpha": 0.6, "shrinkA": 3, "shrinkB": 3},
+    )
+
+    sns.despine(ax=ax, left=False, bottom=False)
+    # Short inward ticks at each labeled value (inward avoids tight-bbox clipping).
+    ax.tick_params(axis="both", which="major", direction="in", length=5, width=0.9, color="#222222", bottom=True, left=True, top=False, right=False)
+    ax.tick_params(axis="both", which="minor", length=0)
+    legend = ax.legend(loc="upper left", frameon=True, fancybox=False, facecolor="white", framealpha=0.95, edgecolor="#cccccc", fontsize=8, borderpad=0.4, labelspacing=0.35, handletextpad=0.4)
+    legend.get_frame().set_linewidth(0.6)
+
     fig.tight_layout()
-    fig.savefig(path, dpi=150)
+    fig.savefig(path, dpi=300, bbox_inches="tight", facecolor="white", edgecolor="none")
     plt.close(fig)
+    sns.reset_defaults()
     print(f"\nWrote {path}")
 
 
 def main() -> None:
     print(f"Batch={BATCH} | {H}x{W} | warmup={WARMUP} runs={RUNS}")
     print("Baselines: Macenko→torchstain | Reinhard→StainTools | HM→skimage")
-    print(f"Images: {DATA.name}/target + test_1..5 → {H}x{W}, ×{BATCH}\n")
+    print(f"Images: {DATA.name}/target + test_1..5 → {H}x{W}, x{BATCH}\n")
 
     ref, src = _load_he_batch(BATCH)
     print("Building baselines...")
