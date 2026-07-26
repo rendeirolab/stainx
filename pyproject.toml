@@ -73,6 +73,13 @@ benchmark = [
     "torchstain==1.4.1",  # Pin same revision as correctness tests (dev group)
     "staintools",  # Reinhard / Macenko CPU reference (StainTools)
     "scikit-image",
+    "color-matcher",  # Independent HM + photo Reinhard peer
+    "tiatoolbox",  # Macenko + Reinhard
+    "torch-staintools",  # Macenko + Reinhard (CPU/GPU)
+    "wsi-normalizer",  # Reinhard only here (Macenko needs working SPAMS Fortran arrays)
+    "colortrans",  # Reinhard color transfer
+    "color_transfer",  # Reinhard (pyimagesearch)
+    "opencv-python-headless",  # color_transfer BGR conversion
     "matplotlib",
     "seaborn",
     "adjustText",

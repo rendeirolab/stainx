@@ -8,7 +8,15 @@
 
 Sources: ``examples/data/target.png`` + ``test_1..5.png`` (resized, repeated to batch).
 MAE baselines (CPU): Macenko→torchstain | Reinhard→StainTools | HM→skimage.
-Shapes = device (CPU ○ / GPU □), colors = method; dashed = Pareto; dotted = max MAE (255).
+Those reference libs (StainTools, skimage) are omitted from the plot; torchstain is kept.
+
+Peers surveyed for Macenko / Reinhard / HM (installable + working):
+  stainx, torchstain (+modified Reinhard), slideflow, color-matcher, tiatoolbox,
+  torch-staintools, wsi-normalizer (Reinhard), colortrans, color_transfer.
+Skipped: colorcast (HM wraps skimage); StainTools/wsi Macenko (spams Fortran failure);
+  stainlib/histomicstk/pathml (not pip-installable here); Vahadane-only tools.
+
+One panel per method (horizontal); color = package; shapes = device (CPU ○ / GPU ★); dashed = Pareto; dotted = max MAE (255).
 """
 
 from __future__ import annotations
@@ -19,6 +27,7 @@ import time
 import types
 from pathlib import Path
 
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
@@ -26,6 +35,9 @@ import slideflow.norm as sf_norm
 import torch
 import torch.nn.functional as F  # noqa: N812
 from adjustText import adjust_text
+from color_matcher import ColorMatcher
+from color_matcher.hist_matcher import HistogramMatcher as ColorMatcherHM
+from color_transfer import color_transfer as pyimagesearch_color_transfer
 from PIL import Image
 from skimage.exposure import match_histograms
 from torchstain.torch.normalizers import TorchMacenkoNormalizer, TorchReinhardNormalizer
@@ -34,13 +46,34 @@ from stainx import HistogramMatching, Macenko, Reinhard
 from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
 
 BATCH, H, W = 128, 256, 256
-WARMUP, RUNS = 3, 10
+WARMUP, RUNS = 30, 100
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "examples" / "data"
 OUT = Path(__file__).resolve().parent / "logs" / "pareto_time_mae.png"
 
-METHOD_COLOR = {"Macenko": "#9b2335", "Reinhard": "#d4a017", "HistogramMatching": "#b56b7a"}
-DEVICE_MARKER = {"CPU": "o", "GPU": "s"}
+METHODS = ("Macenko", "Reinhard", "HistogramMatching")
+DEVICE_MARKER = {"CPU": "o", "GPU": "*"}
+# Color encodes package. #9b2335 dominates for stainx; peers get distinct accents.
+PACKAGE_COLOR = {
+    "torchstain": "#5c7a8a",
+    "torchstain[modified]": "#7a9aab",
+    "stainx[torch]": "#9b2335",
+    "stainx[torch_cuda]": "#6e1826",
+    "slideflow": "#d4a017",
+    "slideflow[fast]": "#b8860b",
+    "color-matcher": "#2f6f4e",
+    "tiatoolbox": "#6b4c9a",
+    "torch-staintools": "#c45c26",
+    "wsi-normalizer": "#2a6f97",
+    "colortrans": "#8b5a2b",
+    "color_transfer": "#4a6741",
+}
+PACKAGE_COLOR_FALLBACK = "#555555"
+PARETO_COLOR = "#444444"
+# MAE reference used for error (build_baselines). Omit pure reference libs from the
+# scatter; keep torchstain plotted so the package is visible (Macenko MAE≈0 by construction).
+MAE_BASELINE_PACKAGE = {"Macenko": "torchstain", "Reinhard": "StainTools", "HistogramMatching": "skimage"}
+PLOT_EXCLUDE = {(method, package) for method, package in MAE_BASELINE_PACKAGE.items() if package != "torchstain"}
 MAE_FLOOR = 1e-4
 MAE_MAX = 255.0  # vertical reference: max possible grey-level MAE
 
@@ -175,11 +208,69 @@ def collect_results(ref: torch.Tensor, src: torch.Tensor, baselines: dict[str, t
     ts_r.fit(ref_chw)
     add("Reinhard", "torchstain", cpu, lambda: [ts_r.normalize(src_f[i]) for i in range(BATCH)])
 
-    # StainTools / skimage (CPU for-loop)
+    # StainTools / skimage / color-matcher (CPU for-loop)
     st = _staintools_reinhard()()
     st.fit(ref_hwc)
     add("Reinhard", "StainTools", cpu, lambda: [st.transform(src_nhwc[i]) for i in range(BATCH)])
     add("HistogramMatching", "skimage", cpu, lambda: [match_histograms(src_nhwc[i], ref_hwc, channel_axis=-1) for i in range(BATCH)])
+    # color-matcher: photo Reinhard + independent HM (no Macenko). Baselines stay StainTools / skimage.
+    ref_f64 = ref_hwc.astype(np.float64)
+    cm = ColorMatcher()
+    cm_hm = ColorMatcherHM()
+    add("Reinhard", "color-matcher", cpu, lambda: [cm.transfer(src=src_nhwc[i].astype(np.float64), ref=ref_f64, method="reinhard") for i in range(BATCH)])
+    add("HistogramMatching", "color-matcher", cpu, lambda: [cm_hm.hist_match(src=src_nhwc[i].astype(np.float64), ref=ref_f64) for i in range(BATCH)])
+
+    # torchstain modified Reinhard (Roy et al.)
+    ts_rm = TorchReinhardNormalizer(method="modified")
+    ts_rm.fit(ref_chw)
+    add("Reinhard", "torchstain[modified]", cpu, lambda: [ts_rm.normalize(src_f[i]) for i in range(BATCH)])
+
+    # colortrans / color_transfer — general Reinhard color transfer (not pathology-specific).
+    import colortrans
+
+    add("Reinhard", "colortrans", cpu, lambda: [colortrans.transfer_reinhard(src_nhwc[i], ref_hwc) for i in range(BATCH)])
+    ref_bgr = cv2.cvtColor(ref_hwc, cv2.COLOR_RGB2BGR)
+    add(
+        "Reinhard",
+        "color_transfer",
+        cpu,
+        lambda: [
+            cv2.cvtColor(pyimagesearch_color_transfer(ref_bgr, cv2.cvtColor(src_nhwc[i], cv2.COLOR_RGB2BGR)), cv2.COLOR_BGR2RGB) for i in range(BATCH)
+        ],
+    )
+
+    # tiatoolbox (StainTools-derived Reinhard / Macenko)
+    from tiatoolbox.tools import stainnorm
+
+    for method in ("Reinhard", "Macenko"):
+        tn = stainnorm.get_normalizer(method)
+        tn.fit(ref_hwc)
+        add(method, "tiatoolbox", cpu, lambda tn=tn: [tn.transform(src_nhwc[i]) for i in range(BATCH)])
+
+    # wsi-normalizer (CPU for-loop; Macenko needs working SPAMS Fortran arrays — skip)
+    from wsi_normalizer import ReinhardNormalizer as WsiReinhard
+
+    wsi_r = WsiReinhard()
+    wsi_r.fit(ref_hwc)
+    add("Reinhard", "wsi-normalizer", cpu, lambda: [wsi_r.transform(src_nhwc[i]) for i in range(BATCH)])
+
+    # torch-staintools (native batch; float [0,1] NCHW)
+    from torch_staintools.normalizer import NormalizerBuilder
+
+    tst_devices = [cpu] + ([cuda] if cuda is not None else [])
+    for method, builder in (("Macenko", "macenko"), ("Reinhard", "reinhard")):
+        for dev in tst_devices:
+            n = NormalizerBuilder.build(builder, use_cache=False).to(dev).eval()
+            ref01 = (ref.float() / 255.0).to(dev)
+            src01 = (src.float() / 255.0).to(dev)
+            with torch.no_grad():
+                n.fit(ref01)
+
+            def _tst_fn(n=n, x=src01):
+                with torch.no_grad():
+                    return n(x) * 255.0
+
+            add(method, "torch-staintools", dev, _tst_fn)
 
     # StainX (native batch; H2D outside timer)
     backends = [("torch", cpu)]
@@ -208,73 +299,55 @@ def collect_results(ref: torch.Tensor, src: torch.Tensor, baselines: dict[str, t
     return results
 
 
+def _panel_label(package: str, method: str) -> str:
+    """Full package names; drop redundant method stem from slideflow tags (panel title has it)."""
+    stem = {"Macenko": "macenko", "Reinhard": "reinhard", "HistogramMatching": "histogram"}.get(method, method.lower())
+    if package == f"slideflow[{stem}_fast]":
+        return "slideflow[fast]"
+    if package == f"slideflow[{stem}]":
+        return "slideflow"
+    return package
+
+
+def _package_color(package: str, method: str) -> str:
+    return PACKAGE_COLOR.get(_panel_label(package, method), PACKAGE_COLOR_FALLBACK)
+
+
 def plot(results: list[dict], path: Path, mae_max: float = MAE_MAX) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    # Drop pure MAE-definition libs (StainTools / skimage). Keep torchstain + color-matcher + others.
+    results = [p for p in results if (p["method"], p["package"]) not in PLOT_EXCLUDE]
+    if not results:
+        raise SystemExit("No results to plot after excluding MAE baselines.")
 
-    # Journal-style typography (serif; sizes typical for single-column figure panels).
+    # Bioinformatics / OUP figure typography: Arial or Helvetica, ≥7 pt.
     sns.set_theme(style="white", context="paper")
     plt.rcParams.update({
-        "font.family": "serif",
-        "font.serif": ["Times New Roman", "Times", "Liberation Serif", "DejaVu Serif"],
-        "mathtext.fontset": "stix",
-        "axes.labelsize": 10,
-        "axes.titlesize": 10,
-        "xtick.labelsize": 9,
-        "ytick.labelsize": 9,
-        "legend.fontsize": 8,
-        "legend.title_fontsize": 8,
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "Helvetica", "Nimbus Sans", "Liberation Sans", "DejaVu Sans"],
+        "mathtext.fontset": "dejavusans",
+        "axes.labelsize": 9,
+        "axes.titlesize": 9,
+        "xtick.labelsize": 7,
+        "ytick.labelsize": 7,
+        "legend.fontsize": 7,
+        "legend.title_fontsize": 7,
         "xtick.major.size": 4,
         "ytick.major.size": 4,
         "xtick.major.width": 0.8,
         "ytick.major.width": 0.8,
         "xtick.bottom": True,
         "ytick.left": True,
-        "pdf.fonttype": 42,  # editable text in Illustrator / Word
+        "axes.labelpad": 2,
+        "xtick.major.pad": 2,
+        "ytick.major.pad": 2,
+        "pdf.fonttype": 42,
         "ps.fonttype": 42,
     })
-    fig, ax = plt.subplots(figsize=(7.2, 5.0), dpi=300)  # ~single-column width at 300 dpi
-    ax.set_facecolor("white")
+
+    fig, axes = plt.subplots(1, 3, figsize=(11.0, 3.8), dpi=350, sharex=False, sharey=False)
     fig.patch.set_facecolor("white")
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-
-    # Light major grid on white
-    ax.grid(True, which="major", color="#e8e8e8", linewidth=0.7)
-    ax.grid(False, which="minor")
-
-    texts = []
-    xs_pts, ys_pts = [], []
-    for p in results:
-        x = max(p["mae"], MAE_FLOOR)
-        y = p["imgs_per_s"]
-        xs_pts.append(x)
-        ys_pts.append(y)
-        ax.scatter(x, y, marker=DEVICE_MARKER[p["device"]], s=90, c=METHOD_COLOR[p["method"]], edgecolors="black", linewidths=1, zorder=3, alpha=0.75)
-        texts.append(ax.text(x, y, p["package"], fontsize=7, color="#333333", alpha=0.95, bbox={"boxstyle": "round,pad=0.12", "facecolor": "white", "edgecolor": "none", "alpha": 0.8}, zorder=4))
-
-    ax.axvline(mae_max, color="#555555", linestyle=":", linewidth=1.4, zorder=1, alpha=0.8, label=f"Maximum mean absolute error ({mae_max:.0f})")
-
-    for method, color in METHOD_COLOR.items():
-        front = _pareto_front([p for p in results if p["method"] == method])
-        xs = [max(p["mae"], MAE_FLOOR) for p in front]
-        ys = [p["imgs_per_s"] for p in front]
-        if len(front) >= 2:
-            ax.plot(xs, ys, "--", color=color, linewidth=1.5, zorder=2, alpha=0.85, label=f"Pareto {method}")
-        elif len(front) == 1:
-            ax.scatter(xs, ys, marker="x", c=color, s=60, zorder=2, label=f"Pareto {method}")
-
-    for method, color in METHOD_COLOR.items():
-        ax.scatter([], [], marker="o", c=color, s=70, label=method, edgecolors="black", linewidths=0.7, alpha=0.75)
-    for device, marker in DEVICE_MARKER.items():
-        ax.scatter([], [], marker=marker, c="#888888", s=70, label=device, edgecolors="black", linewidths=0.7, alpha=0.75)
-
-    ax.set_xlabel("Mean absolute error vs stable baseline  (lower is better)")
-    ax.set_ylabel("Throughput (images per second)  (higher is better)")
-
-    # Plain numeric ticks, always including maximum mean absolute error (255) on the axis.
-    x_ticks = [MAE_FLOOR, 0.001, 0.01, 0.1, 1, 10, 100, mae_max]
-    ax.set_xticks(x_ticks)
-    ax.set_xlim(MAE_FLOOR * 0.7, mae_max * 1.15)
+    x_ticks_all = [MAE_FLOOR, 0.001, 0.01, 0.1, 1, 10, 100, mae_max]
 
     def _plain_num(v: float, _pos=None) -> str:
         if abs(v - mae_max) / mae_max < 1e-6:
@@ -283,38 +356,89 @@ def plot(results: list[dict], path: Path, mae_max: float = MAE_MAX) -> None:
             return f"{v:.0f}"
         return f"{v:.4g}"
 
-    ax.xaxis.set_major_formatter(plt.FuncFormatter(_plain_num))
-    ax.xaxis.set_minor_locator(plt.NullLocator())
+    for ax, method in zip(axes, METHODS, strict=True):
+        pts = [p for p in results if p["method"] == method]
+        ax.set_facecolor("white")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.grid(True, which="major", color="#e8e8e8", linewidth=0.7)
+        ax.grid(False, which="minor")
+        ax.set_title(method, fontsize=9, pad=4)
 
-    # Nudge labels just enough to avoid overlap, keeping them near their points.
-    adjust_text(
-        texts,
-        x=xs_pts,
-        y=ys_pts,
-        ax=ax,
-        force_text=(0.4, 0.5),
-        force_static=(0.3, 0.4),
-        force_explode=(0.6, 0.8),
-        force_pull=(0.02, 0.02),
-        expand=(1.15, 1.25),
-        max_move=(35, 35),
-        explode_radius="auto",
-        ensure_inside_axes=True,
-        expand_axes=False,
-        iter_lim=400,
-        min_arrow_len=5,
-        arrowprops={"arrowstyle": "-", "color": "#bbbbbb", "lw": 0.45, "alpha": 0.6, "shrinkA": 3, "shrinkB": 3},
-    )
+        # Plot markers at true (mae, tps) so the Pareto line matches the points.
+        # (Jittering markers previously made torchstain look left of stainx and broke the front.)
+        xs_pts = [max(p["mae"], MAE_FLOOR) for p in pts]
+        ys_pts = [p["imgs_per_s"] for p in pts]
 
-    sns.despine(ax=ax, left=False, bottom=False)
-    # Short inward ticks at each labeled value (inward avoids tight-bbox clipping).
-    ax.tick_params(axis="both", which="major", direction="in", length=5, width=0.9, color="#222222", bottom=True, left=True, top=False, right=False)
-    ax.tick_params(axis="both", which="minor", length=0)
-    legend = ax.legend(loc="upper left", frameon=True, fancybox=False, facecolor="white", framealpha=0.95, edgecolor="#cccccc", fontsize=8, borderpad=0.4, labelspacing=0.35, handletextpad=0.4)
-    legend.get_frame().set_linewidth(0.6)
+        texts = []
+        for p, x, y in zip(pts, xs_pts, ys_pts, strict=True):
+            color = _package_color(p["package"], method)
+            marker = DEVICE_MARKER[p["device"]]
+            # Stars read smaller than circles at the same ``s``.
+            size = 110 if marker == "*" else 55
+            ax.scatter(x, y, marker=marker, s=size, c=color, edgecolors="black", linewidths=0.7, zorder=3, alpha=0.9)
+            texts.append(ax.text(x, y, _panel_label(p["package"], method), fontsize=6.5, color="#222222", alpha=0.95, bbox={"boxstyle": "round,pad=0.08", "facecolor": "white", "edgecolor": "none", "alpha": 0.85}, zorder=4))
 
-    fig.tight_layout()
-    fig.savefig(path, dpi=300, bbox_inches="tight", facecolor="white", edgecolor="none")
+        ax.axvline(mae_max, color="#555555", linestyle=":", linewidth=1.4, zorder=1, alpha=0.85)
+
+        front = _pareto_front(pts)
+        xs = [max(p["mae"], MAE_FLOOR) for p in front]
+        ys = [p["imgs_per_s"] for p in front]
+        if len(front) >= 2:
+            ax.plot(xs, ys, "--", color=PARETO_COLOR, linewidth=1.3, zorder=2, alpha=0.75)
+        elif len(front) == 1:
+            ax.scatter(xs, ys, marker="x", c=PARETO_COLOR, s=45, zorder=2)
+
+        # Always show max MAE (255) on every panel, not only when data reach it.
+        x_min = min(xs_pts)
+        y_min, y_max = min(ys_pts), max(ys_pts)
+        ax.set_xlim(max(x_min / 4, MAE_FLOOR * 0.5), mae_max * 1.25)
+        ax.set_ylim(y_min / 2.2, y_max * 2.5)
+        ticks = [t for t in x_ticks_all if ax.get_xlim()[0] <= t <= mae_max * 1.25]
+        if mae_max not in ticks:
+            ticks.append(mae_max)
+        ax.set_xticks(sorted(set(ticks)))
+        ax.xaxis.set_major_formatter(plt.FuncFormatter(_plain_num))
+        ax.xaxis.set_minor_locator(plt.NullLocator())
+        ax.set_xlabel("Mean absolute error vs stable baseline  (lower is better)", fontsize=8, labelpad=2)
+
+        if texts:
+            adjust_text(
+                texts,
+                x=xs_pts,
+                y=ys_pts,
+                ax=ax,
+                force_text=(0.9, 1.1),
+                force_static=(0.6, 0.8),
+                force_explode=(1.2, 1.4),
+                force_pull=(0.015, 0.015),
+                expand=(1.25, 1.35),
+                max_move=(45, 55),
+                explode_radius="auto",
+                ensure_inside_axes=True,
+                expand_axes=True,
+                iter_lim=500,
+                min_arrow_len=3,
+                arrowprops={"arrowstyle": "-", "color": "#aaaaaa", "lw": 0.45, "alpha": 0.7, "shrinkA": 2, "shrinkB": 2},
+            )
+
+        sns.despine(ax=ax, left=False, bottom=False)
+        ax.tick_params(axis="both", which="major", direction="in", length=4, width=0.8, pad=2, color="#222222", bottom=True, left=True, top=False, right=False)
+        ax.tick_params(axis="x", which="major", labelrotation=35)
+        ax.tick_params(axis="both", which="minor", length=0)
+
+    # Shared legend on leftmost panel: device shapes + reference lines.
+    axes[0].scatter([], [], marker="o", c="#666666", s=50, label="CPU", edgecolors="black", linewidths=0.7, alpha=0.9)
+    axes[0].scatter([], [], marker="*", c="#666666", s=100, label="GPU", edgecolors="black", linewidths=0.7, alpha=0.9)
+    axes[0].plot([], [], "--", color=PARETO_COLOR, linewidth=1.3, label="Pareto front")
+    axes[0].plot([], [], ":", color="#555555", linewidth=1.4, label=f"Max. mean abs. error ({mae_max:.0f})")
+    leg = axes[0].legend(loc="upper left", frameon=True, fancybox=False, facecolor="white", framealpha=0.95, edgecolor="#cccccc", fontsize=6.5, borderpad=0.35, labelspacing=0.3, handletextpad=0.35)
+    leg.get_frame().set_linewidth(0.6)
+
+    axes[0].set_ylabel("Throughput (img/s)", fontsize=8, labelpad=2)
+
+    fig.tight_layout(pad=0.4, w_pad=0.6, h_pad=0.3)
+    fig.savefig(path, dpi=350, bbox_inches="tight", pad_inches=0.05, facecolor="white", edgecolor="none")
     plt.close(fig)
     sns.reset_defaults()
     print(f"\nWrote {path}")
