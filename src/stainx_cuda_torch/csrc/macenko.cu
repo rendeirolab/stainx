@@ -104,8 +104,21 @@ __device__ void analytic_eigh_sym3(const T A[3][3], T evecs2[3][2]) {
 
     T e_asc[3];  // eigenvalues ascending
     if (p1 <= T(1e-30)) {
-        // Already diagonal (or effectively zero off-diagonal).
-        e_asc[0] = e_asc[1] = e_asc[2] = q;
+        // Already diagonal (or effectively zero off-diagonal):
+        // eigenvalues are the diagonal entries, not the trace mean.
+        e_asc[0] = A[0][0];
+        e_asc[1] = A[1][1];
+        e_asc[2] = A[2][2];
+        // Insertion-sort ascending.
+        for (int i = 1; i < 3; ++i) {
+            const T key = e_asc[i];
+            int j = i - 1;
+            while (j >= 0 && e_asc[j] > key) {
+                e_asc[j + 1] = e_asc[j];
+                --j;
+            }
+            e_asc[j + 1] = key;
+        }
     } else {
         const T p2 = (A[0][0] - q) * (A[0][0] - q) + (A[1][1] - q) * (A[1][1] - q) + (A[2][2] - q) * (A[2][2] - q) + T(2.0) * p1;
         const T p  = sqrt(p2 / T(6.0));
