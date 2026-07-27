@@ -126,6 +126,7 @@ class NormalizerTemplate(StainNormalizerBase):
 
         torch_class = self._get_torch_class()
         kwargs = self._get_backend_kwargs()
+        kwargs.pop("precision", None)  # CUDA-only kwarg; not valid for torch backend
         return torch_class(device, **kwargs)
 
     def _get_backend_kwargs(self) -> dict:

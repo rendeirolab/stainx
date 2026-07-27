@@ -46,30 +46,28 @@ from stainx import HistogramMatching, Macenko, Reinhard
 from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
 
 BATCH, H, W = 128, 256, 256
-WARMUP, RUNS = 30, 100
+WARMUP, RUNS = 10, 300
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "examples" / "data"
 OUT = Path(__file__).resolve().parent / "logs" / "pareto_time_mae.png"
 
 METHODS = ("Macenko", "Reinhard", "HistogramMatching")
 DEVICE_MARKER = {"CPU": "o", "GPU": "*"}
-# Color encodes package. #9b2335 dominates for stainx; peers get distinct accents.
+# High-contrast categorical palette. Seed purples/pinks kept for stainx + peers;
+# remaining packages use distinct accents so markers stay separable on white.
 PACKAGE_COLOR = {
-    "torchstain": "#5c7a8a",
-    "torchstain[modified]": "#7a9aab",
-    "stainx[torch]": "#9b2335",
-    "stainx[torch_cuda]": "#6e1826",
-    "slideflow": "#d4a017",
-    "slideflow[fast]": "#b8860b",
-    "color-matcher": "#2f6f4e",
-    "tiatoolbox": "#6b4c9a",
-    "torch-staintools": "#c45c26",
-    "wsi-normalizer": "#2a6f97",
-    "colortrans": "#8b5a2b",
-    "color_transfer": "#4a6741",
+    "stainx": "#412b73",  # deep purple (dominant)
+    "torchstain": "#7D4493",  # mid purple (seed)
+    "slideflow": "#E69F00",  # gold — strong contrast to purple
+    "torch-staintools": "#009E73",  # teal
+    "tiatoolbox": "#0072B2",  # blue
+    "wsi-normalizer": "#56B4E9",  # sky
+    "color-matcher": "#b166a6",  # magenta (seed)
+    "colortrans": "#D55E00",  # vermillion
+    "color_transfer": "#f196c1",  # pink (seed)
 }
 PACKAGE_COLOR_FALLBACK = "#555555"
-PARETO_COLOR = "#444444"
+PARETO_COLOR = "#333333"
 # MAE reference used for error (build_baselines). Omit pure reference libs from the
 # scatter; keep torchstain plotted so the package is visible (Macenko MAE≈0 by construction).
 MAE_BASELINE_PACKAGE = {"Macenko": "torchstain", "Reinhard": "StainTools", "HistogramMatching": "skimage"}
@@ -230,14 +228,7 @@ def collect_results(ref: torch.Tensor, src: torch.Tensor, baselines: dict[str, t
 
     add("Reinhard", "colortrans", cpu, lambda: [colortrans.transfer_reinhard(src_nhwc[i], ref_hwc) for i in range(BATCH)])
     ref_bgr = cv2.cvtColor(ref_hwc, cv2.COLOR_RGB2BGR)
-    add(
-        "Reinhard",
-        "color_transfer",
-        cpu,
-        lambda: [
-            cv2.cvtColor(pyimagesearch_color_transfer(ref_bgr, cv2.cvtColor(src_nhwc[i], cv2.COLOR_RGB2BGR)), cv2.COLOR_BGR2RGB) for i in range(BATCH)
-        ],
-    )
+    add("Reinhard", "color_transfer", cpu, lambda: [cv2.cvtColor(pyimagesearch_color_transfer(ref_bgr, cv2.cvtColor(src_nhwc[i], cv2.COLOR_RGB2BGR)), cv2.COLOR_BGR2RGB) for i in range(BATCH)])
 
     # tiatoolbox (StainTools-derived Reinhard / Macenko)
     from tiatoolbox.tools import stainnorm
@@ -274,10 +265,8 @@ def collect_results(ref: torch.Tensor, src: torch.Tensor, baselines: dict[str, t
 
     # StainX (native batch; H2D outside timer)
     backends = [("torch", cpu)]
-    if cuda is not None:
-        backends.append(("torch", cuda))
-        if CUDA_AVAILABLE:
-            backends.append(("torch_cuda", cuda))
+    if cuda is not None and CUDA_AVAILABLE:
+        backends.append(("torch_cuda", cuda))
 
     for method, cls, kwargs in (("Macenko", Macenko, {}), ("Reinhard", Reinhard, {}), ("HistogramMatching", HistogramMatching, {"channel_axis": 1})):
         for backend, dev in backends:
@@ -285,6 +274,13 @@ def collect_results(ref: torch.Tensor, src: torch.Tensor, baselines: dict[str, t
             n.fit(ref.to(dev))
             x = src.to(dev)
             add(method, f"stainx[{backend}]", dev, lambda n=n, x=x: n.transform(x))
+
+    # StainX Macenko fast precision (fp32 cov/eigh + fp16 pixels — no fp64)
+    if cuda is not None and CUDA_AVAILABLE:
+        n_fast = Macenko(device=cuda, backend="torch_cuda", precision="fast")
+        n_fast.fit(ref.to(cuda))
+        x_fast = src.to(cuda)
+        add("Macenko", "stainx[torch_cuda_fast]", cuda, lambda n=n_fast, x=x_fast: n.transform(x))
 
     # Slideflow
     devices = [cpu] + ([cuda] if cuda is not None else [])
@@ -309,8 +305,20 @@ def _panel_label(package: str, method: str) -> str:
     return package
 
 
+def _package_family(package: str) -> str:
+    """Collapse backends/variants to one legend/color family (e.g. stainx[*] → stainx)."""
+    if package.startswith("stainx"):
+        return "stainx"
+    if package.startswith("slideflow"):
+        return "slideflow"
+    if package.startswith("torchstain"):
+        return "torchstain"
+    return package
+
+
 def _package_color(package: str, method: str) -> str:
-    return PACKAGE_COLOR.get(_panel_label(package, method), PACKAGE_COLOR_FALLBACK)
+    _ = method
+    return PACKAGE_COLOR.get(_package_family(package), PACKAGE_COLOR_FALLBACK)
 
 
 def plot(results: list[dict], path: Path, mae_max: float = MAE_MAX) -> None:
@@ -427,13 +435,30 @@ def plot(results: list[dict], path: Path, mae_max: float = MAE_MAX) -> None:
         ax.tick_params(axis="x", which="major", labelrotation=35)
         ax.tick_params(axis="both", which="minor", length=0)
 
-    # Shared legend on leftmost panel: device shapes + reference lines.
-    axes[0].scatter([], [], marker="o", c="#666666", s=50, label="CPU", edgecolors="black", linewidths=0.7, alpha=0.9)
-    axes[0].scatter([], [], marker="*", c="#666666", s=100, label="GPU", edgecolors="black", linewidths=0.7, alpha=0.9)
-    axes[0].plot([], [], "--", color=PARETO_COLOR, linewidth=1.3, label="Pareto front")
-    axes[0].plot([], [], ":", color="#555555", linewidth=1.4, label=f"Max. mean abs. error ({mae_max:.0f})")
-    leg = axes[0].legend(loc="upper left", frameon=True, fancybox=False, facecolor="white", framealpha=0.95, edgecolor="#cccccc", fontsize=6.5, borderpad=0.35, labelspacing=0.3, handletextpad=0.35)
-    leg.get_frame().set_linewidth(0.6)
+    # Two legends on the rightmost panel: package colors (squares) above; device/lines below.
+    # Pass explicit handles so the device legend does not also pick up package artists.
+    ax_leg = axes[-1]
+    packages_in_plot: list[str] = []
+    for p in results:
+        fam = _package_family(p["package"])
+        if fam not in packages_in_plot:
+            packages_in_plot.append(fam)
+
+    pkg_handles = [ax_leg.scatter([], [], marker="s", c=PACKAGE_COLOR.get(lab, PACKAGE_COLOR_FALLBACK), s=45, edgecolors="black", linewidths=0.6, alpha=0.9) for lab in packages_in_plot]
+    leg_pkg = ax_leg.legend(
+        handles=pkg_handles, labels=packages_in_plot, loc="lower right", bbox_to_anchor=(1.0, 0.175), ncol=2, columnspacing=0.8, frameon=True, fancybox=False, facecolor="white", framealpha=0.95, edgecolor="#cccccc", fontsize=6, borderpad=0.35, labelspacing=0.25, handletextpad=0.35, title="Package", title_fontsize=6.5
+    )
+    leg_pkg.get_frame().set_linewidth(0.6)
+    ax_leg.add_artist(leg_pkg)
+
+    h_cpu = ax_leg.scatter([], [], marker="o", c="#666666", s=50, edgecolors="black", linewidths=0.7, alpha=0.9)
+    h_gpu = ax_leg.scatter([], [], marker="*", c="#666666", s=100, edgecolors="black", linewidths=0.7, alpha=0.9)
+    h_pareto = ax_leg.plot([], [], "--", color=PARETO_COLOR, linewidth=1.3)[0]
+    h_max = ax_leg.plot([], [], ":", color="#555555", linewidth=1.4)[0]
+    leg_dev = ax_leg.legend(
+        handles=[h_cpu, h_gpu, h_pareto, h_max], labels=["CPU", "GPU", "Pareto front", f"Max. mean abs. error ({mae_max:.0f})"], loc="lower right", frameon=True, fancybox=False, facecolor="white", framealpha=0.95, edgecolor="#cccccc", fontsize=6.5, borderpad=0.35, labelspacing=0.3, handletextpad=0.35
+    )
+    leg_dev.get_frame().set_linewidth(0.6)
 
     axes[0].set_ylabel("Throughput (img/s)", fontsize=8, labelpad=2)
 

@@ -97,12 +97,35 @@ class ReinhardCUDA(TorchCUDABackendBase):
 
 
 class MacenkoCUDA(TorchCUDABackendBase):
+    """Macenko CUDA backend.
+
+    Parameters
+    ----------
+    device : str or torch.device, optional
+        CUDA device to use.
+    precision : str, optional
+        Numerical precision mode. ``"stable"`` (default) uses the current
+        fp64-covariance + fp32-pixel path. ``"fast"`` uses fp32 cov/eigh
+        + fp16 for large pixel tensors (projection GEMM, phi sort,
+        reconstruct matmul) while keeping the 2x2 solve at fp32.
+        Both modes pass the same correctness suite vs torchstain.
+    """
+
+    def __init__(self, device: str | torch.device | None = None, precision: str = "stable"):
+        super().__init__(device)
+        if precision not in ("stable", "fast"):
+            raise ValueError(f"precision must be 'stable' or 'fast', got {precision!r}")
+        self._precision = precision
+
     def transform(self, images: torch.Tensor, stain_matrix: torch.Tensor, target_max_conc: torch.Tensor) -> torch.Tensor:
         images = images.to(self.device)
         stain_matrix = stain_matrix.to(self.device)
         target_max_conc = target_max_conc.to(self.device)
 
+        if self._precision == "fast":
+            if not hasattr(stainx_cuda_torch, "macenko_fast"):
+                raise RuntimeError("stainx_cuda_torch.macenko_fast is not available. The CUDA extension may not be built correctly.")
+            return stainx_cuda_torch.macenko_fast(images, stain_matrix, target_max_conc)
         if not hasattr(stainx_cuda_torch, "macenko"):
             raise RuntimeError("stainx_cuda_torch.macenko is not available. The CUDA extension may not be built correctly.")
-
         return stainx_cuda_torch.macenko(images, stain_matrix, target_max_conc)

@@ -22,11 +22,14 @@ torch::Tensor reinhard_cuda(torch::Tensor input_images, torch::Tensor reference_
 
 torch::Tensor macenko_cuda(torch::Tensor input_images, torch::Tensor stain_matrix, torch::Tensor target_max_conc);
 
+torch::Tensor macenko_cuda_fast(torch::Tensor input_images, torch::Tensor stain_matrix, torch::Tensor target_max_conc);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.doc() = "StainX CUDA backend for GPU-accelerated stain normalization (PyTorch interface)";
 
     // Bind CUDA implementations
     m.def("histogram_matching", &histogram_matching_cuda, "Histogram matching CUDA");
     m.def("reinhard", &reinhard_cuda, "Reinhard normalization CUDA");
-    m.def("macenko", &macenko_cuda, "Macenko normalization CUDA");
+    m.def("macenko", &macenko_cuda, "Macenko normalization CUDA (stable: fp64 cov + fp32 pixels)");
+    m.def("macenko_fast", &macenko_cuda_fast, "Macenko normalization CUDA (fast: fp32 cov/eigh + fp16 pixels)");
 }

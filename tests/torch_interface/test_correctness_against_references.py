@@ -126,8 +126,12 @@ class TestAgainstBaselines:
 
         assert torch.allclose(result, baseline_tensor, rtol=RTOL, atol=ATOL), f"Reinhard mismatch vs torchstain (backend={backend}, hw={image_hw})"
 
-    def test_macenko_vs_torchstain(self, device, backend, image_hw):
+    @pytest.mark.parametrize("precision", ["stable", "fast"])
+    def test_macenko_vs_torchstain(self, device, backend, image_hw, precision):
         # Synthetic Beer-Lambert H&E: Macenko needs a well-defined stain plane (see module note).
+        if precision == "fast" and backend != "torch_cuda":
+            pytest.skip("fast precision only applies to torch_cuda backend")
+
         reference_image, source_image = _macenko_pair(image_hw, device)
         ref_chw = reference_image.squeeze(0).cpu()
         src_chw = source_image.squeeze(0).cpu()
@@ -140,7 +144,7 @@ class TestAgainstBaselines:
         fit_normalizer = Macenko(device=torch.device("cpu"), backend="torch")
         fit_normalizer.fit(reference_image.cpu())
 
-        normalizer = Macenko(device=device, backend=backend)
+        normalizer = Macenko(device=device, backend=backend, precision=precision)
         normalizer._stain_matrix = fit_normalizer._stain_matrix.to(device)
         normalizer._target_max_conc = fit_normalizer._target_max_conc.to(device)
         normalizer._is_fitted = True
@@ -148,12 +152,66 @@ class TestAgainstBaselines:
 
         assert torch.allclose(fit_normalizer._stain_matrix.cpu().float(), baseline.HERef.float(), rtol=1e-4, atol=1e-5), f"Macenko HE mismatch (backend={backend}, hw={image_hw})"
         assert torch.allclose(fit_normalizer._target_max_conc.cpu().float().flatten(), baseline.maxCRef.float().flatten(), rtol=1e-3, atol=1e-4), f"Macenko maxC mismatch (backend={backend}, hw={image_hw})"
-        assert torch.allclose(result, baseline_tensor, rtol=RTOL, atol=MACENKO_ATOL), f"Macenko mismatch vs torchstain (backend={backend}, hw={image_hw})"
+        assert torch.allclose(result, baseline_tensor, rtol=RTOL, atol=MACENKO_ATOL), f"Macenko mismatch vs torchstain (backend={backend}, precision={precision}, hw={image_hw})"
         mae = (result - baseline_tensor).abs().mean().item()
-        assert mae <= MACENKO_MAE, f"Macenko MAE {mae:.4f} > {MACENKO_MAE} (backend={backend}, hw={image_hw})"
+        assert mae <= MACENKO_MAE, f"Macenko MAE {mae:.4f} > {MACENKO_MAE} (backend={backend}, precision={precision}, hw={image_hw})"
         assert result.max().item() <= 255.0 + MACENKO_ATOL
         if baseline_tensor.max().item() > 240.0:
-            assert result.max().item() > 240.0, f"Macenko incorrectly capped at Io (backend={backend}, hw={image_hw})"
+            assert result.max().item() > 240.0, f"Macenko incorrectly capped at Io (backend={backend}, precision={precision}, hw={image_hw})"
+
+    def test_macenko_stable_fast_not_identical(self, image_hw):
+        """Fast and stable must produce different results (fp16 rounding)."""
+        if not torch.cuda.is_available() or not TORCH_CUDA_AVAILABLE:
+            pytest.skip("torch_cuda extension unavailable")
+        cuda_device = torch.device("cuda")
+        reference_image, source_image = _macenko_pair(image_hw, cuda_device)
+
+        fit_normalizer = Macenko(device=torch.device("cpu"), backend="torch")
+        fit_normalizer.fit(reference_image.cpu())
+
+        normalizer_stable = Macenko(device=cuda_device, backend="torch_cuda", precision="stable")
+        normalizer_stable._stain_matrix = fit_normalizer._stain_matrix.to(cuda_device)
+        normalizer_stable._target_max_conc = fit_normalizer._target_max_conc.to(cuda_device)
+        normalizer_stable._is_fitted = True
+        result_stable = normalizer_stable.transform(source_image)
+
+        normalizer_fast = Macenko(device=cuda_device, backend="torch_cuda", precision="fast")
+        normalizer_fast._stain_matrix = fit_normalizer._stain_matrix.to(cuda_device)
+        normalizer_fast._target_max_conc = fit_normalizer._target_max_conc.to(cuda_device)
+        normalizer_fast._is_fitted = True
+        result_fast = normalizer_fast.transform(source_image)
+
+        # Both must pass correctness.
+        ref_chw = reference_image.squeeze(0).cpu()
+        src_chw = source_image.squeeze(0).cpu()
+        baseline = TorchMacenkoNormalizer()
+        baseline.fit(ref_chw)
+        baseline_rgb, _, _ = baseline.normalize(src_chw, stains=True)
+        baseline_tensor = baseline_rgb.permute(2, 0, 1).float()
+
+        for label, res in [("stable", result_stable), ("fast", result_fast)]:
+            r = res.squeeze(0).cpu().float()
+            mae = (r - baseline_tensor).abs().mean().item()
+            assert torch.allclose(r, baseline_tensor, rtol=RTOL, atol=MACENKO_ATOL), f"{label} mismatch (hw={image_hw})"
+            assert mae <= MACENKO_MAE, f"{label} MAE {mae:.4f} (hw={image_hw})"
+
+        # Fast must differ from stable (fp16 rounding guarantees this on >= 256² tiles).
+        if image_hw[0] >= 128 and image_hw[1] >= 128:
+            assert not torch.equal(result_stable, result_fast), f"fast and stable results are bitwise identical — fast path may not be using fp16 (hw={image_hw})"
+
+    def test_macenko_precision_validation(self):
+        """Precision validation and backend compatibility checks."""
+        with pytest.raises(ValueError, match="precision='fast' requires backend='torch_cuda'"):
+            Macenko(backend="torch", precision="fast")
+
+        # precision='fast' with auto-selected torch backend (no CUDA) should also raise.
+        if not torch.cuda.is_available():
+            with pytest.raises(ValueError, match="precision='fast' requires backend='torch_cuda'"):
+                Macenko(precision="fast")
+
+        # Invalid precision value.
+        with pytest.raises(ValueError, match="precision must be"):
+            Macenko(precision="ultra")
 
     @pytest.mark.parametrize("channel_axis", [1, -1, 3, -3])
     def test_histogram_matching_vs_skimage(self, reference_image, source_image, device, backend, channel_axis, image_hw):

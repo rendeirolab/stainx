@@ -31,19 +31,21 @@ elif torch_lib_path not in os.environ["LD_LIBRARY_PATH"]:
 FUNCTIONS_AVAILABLE = False
 histogram_matching = None
 macenko = None
+macenko_fast = None
 reinhard = None
 
 if importlib.util.find_spec(f"{__name__}.stainx_cuda_torch") is not None:
     try:
-        from .stainx_cuda_torch import histogram_matching, macenko, reinhard
+        from .stainx_cuda_torch import histogram_matching, macenko, macenko_fast, reinhard
 
-        if all(callable(f) for f in [histogram_matching, macenko, reinhard]):
+        if all(callable(f) for f in [histogram_matching, macenko, macenko_fast, reinhard]):
             FUNCTIONS_AVAILABLE = True
     except Exception:
         # Stale/incompatible .so (ABI mismatch) — fall back to Torch backend
         histogram_matching = None
         macenko = None
+        macenko_fast = None
         reinhard = None
         FUNCTIONS_AVAILABLE = False
 
-__all__ = ["FUNCTIONS_AVAILABLE", "histogram_matching", "macenko", "reinhard"]
+__all__ = ["FUNCTIONS_AVAILABLE", "histogram_matching", "macenko", "macenko_fast", "reinhard"]
