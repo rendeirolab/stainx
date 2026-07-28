@@ -46,10 +46,14 @@ from stainx import HistogramMatching, Macenko, Reinhard
 from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
 
 BATCH, H, W = 128, 256, 256
+<<<<<<< HEAD
 WARMUP, RUNS = 10, 300
+=======
+WARMUP, RUNS = 10, 100
+>>>>>>> 5dcdde9 (fix: adjust benchmark parameters and output format in Pareto time vs MAE script)
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "examples" / "data"
-OUT = Path(__file__).resolve().parent / "logs" / "pareto_time_mae.png"
+OUT = Path(__file__).resolve().parent / "logs" / "pareto_time_mae.svg"
 
 METHODS = ("Macenko", "Reinhard", "HistogramMatching")
 DEVICE_MARKER = {"CPU": "o", "GPU": "*"}
@@ -463,7 +467,7 @@ def plot(results: list[dict], path: Path, mae_max: float = MAE_MAX) -> None:
     axes[0].set_ylabel("Throughput (img/s)", fontsize=8, labelpad=2)
 
     fig.tight_layout(pad=0.4, w_pad=0.6, h_pad=0.3)
-    fig.savefig(path, dpi=350, bbox_inches="tight", pad_inches=0.05, facecolor="white", edgecolor="none")
+    fig.savefig(path, format="svg", bbox_inches="tight", pad_inches=0.05, facecolor="white", edgecolor="none")
     plt.close(fig)
     sns.reset_defaults()
     print(f"\nWrote {path}")
