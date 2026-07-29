@@ -17,6 +17,7 @@ Skipped: colorcast (HM wraps skimage); StainTools/wsi Macenko (spams Fortran fai
   stainlib/histomicstk/pathml (not pip-installable here); Vahadane-only tools.
 
 One panel per method (horizontal); color = package; shapes = device (CPU ○ / GPU ★); dashed = Pareto; dotted = max MAE (255).
+Std of MAE (per-image) and throughput (per-run) is printed as text only — never drawn on the plot.
 """
 
 from __future__ import annotations
@@ -45,12 +46,10 @@ from torchstain.torch.normalizers import TorchMacenkoNormalizer, TorchReinhardNo
 from stainx import HistogramMatching, Macenko, Reinhard
 from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
 
+plt.rcParams["svg.fonttype"] = "none"
+
 BATCH, H, W = 128, 256, 256
-<<<<<<< HEAD
-WARMUP, RUNS = 10, 300
-=======
-WARMUP, RUNS = 10, 100
->>>>>>> 5dcdde9 (fix: adjust benchmark parameters and output format in Pareto time vs MAE script)
+WARMUP, RUNS = 3, 10
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "examples" / "data"
 OUT = Path(__file__).resolve().parent / "logs" / "pareto_time_mae.svg"
@@ -85,20 +84,39 @@ def _sync(device: torch.device) -> None:
         torch.cuda.synchronize()
 
 
-def _time_ms(fn, device: torch.device) -> float:
+def _time_stats(fn, device: torch.device) -> tuple[float, float, float, float]:
+    """Per-run timing after warmup. Returns mean_ms, std_ms, mean_imgs_per_s, std_imgs_per_s."""
     for _ in range(WARMUP):
         fn()
         _sync(device)
-    _sync(device)
-    t0 = time.perf_counter()
+    times_ms: list[float] = []
     for _ in range(RUNS):
+        _sync(device)
+        t0 = time.perf_counter()
         fn()
         _sync(device)
-    return (time.perf_counter() - t0) / RUNS * 1000.0
+        times_ms.append((time.perf_counter() - t0) * 1000.0)
+    t = np.asarray(times_ms, dtype=np.float64)
+    tps = BATCH * 1000.0 / np.maximum(t, 1e-12)
+    ddof = 1 if RUNS > 1 else 0
+    return float(t.mean()), float(t.std(ddof=ddof)), float(tps.mean()), float(tps.std(ddof=ddof))
 
 
-def _mae(pred: torch.Tensor, ref: torch.Tensor) -> float:
-    return float((pred.float() - ref.float()).abs().mean())
+def _mae_stats(pred: torch.Tensor, ref: torch.Tensor) -> tuple[float, float]:
+    """Mean and std of per-image MAE (over the batch)."""
+    pred = pred.float()
+    ref = ref.float()
+    per_img = (pred - ref).abs().reshape(pred.shape[0], -1).mean(dim=1)
+    mae_std = float(per_img.std(unbiased=True)) if per_img.numel() > 1 else 0.0
+    return float(per_img.mean()), mae_std
+
+
+def _print_std_summary(results: list[dict]) -> None:
+    """Text-only report of MAE / throughput std (not drawn on the figure)."""
+    print("\nStd summary (text only; plot uses means, no error bars)")
+    print(f"{'method':<20} {'package':<24} {'dev':<5} {'imgs/s':>10} {'±std':>10} {'MAE':>10} {'±std':>10}")
+    for p in results:
+        print(f"{p['method']:<20} {p['package']:<24} {p['device']:<5} {p['imgs_per_s']:10.1f} {p['imgs_per_s_std']:10.1f} {p['mae']:10.4f} {p['mae_std']:10.4f}")
 
 
 def _as_nchw_float(x) -> torch.Tensor:
@@ -166,6 +184,51 @@ def _pareto_front(points: list[dict]) -> list[dict]:
     return front
 
 
+def _label_indices(pts: list[dict], method: str) -> set[int]:
+    """Indices of points that should get a text label."""
+    if method != "Reinhard":
+        return set(range(len(pts)))
+
+    # Reinhard has many CPU/GPU pairs stacked at similar MAE; label once per package.
+    by_pkg: dict[str, int] = {}
+    for i, p in enumerate(pts):
+        pkg = p["package"]
+        if pkg not in by_pkg:
+            by_pkg[pkg] = i
+            continue
+        cur = pts[by_pkg[pkg]]
+        if (p["device"] == "GPU" and cur["device"] != "GPU") or (p["device"] == cur["device"] and p["imgs_per_s"] > cur["imgs_per_s"]):
+            by_pkg[pkg] = i
+    return set(by_pkg.values())
+
+
+def _seed_label_positions(texts: list, xs: list[float], ys: list[float], *, spread: float = 0.18) -> None:
+    """Place labels on a ring around the cluster centroid (log axes) before adjust_text."""
+    import math
+
+    if len(texts) < 2:
+        return
+
+    log_xs = [math.log10(x) for x in xs]
+    log_ys = [math.log10(y) for y in ys]
+    cx = sum(log_xs) / len(log_xs)
+    cy = sum(log_ys) / len(log_ys)
+    for t, lx, ly in zip(texts, log_xs, log_ys, strict=True):
+        dx, dy = lx - cx, ly - cy
+        if abs(dx) < 1e-9 and abs(dy) < 1e-9:
+            dx, dy = 1.0, 0.25
+        norm = math.hypot(dx, dy) or 1.0
+        dx, dy = dx / norm, dy / norm
+        t.set_position((10 ** (lx + dx * spread), 10 ** (ly + dy * spread)))
+
+
+def _adjust_text_kwargs(method: str) -> dict:
+    common = {"ensure_inside_axes": True, "expand_axes": True, "iter_lim": 700, "min_arrow_len": 3, "arrowprops": {"arrowstyle": "-", "color": "#aaaaaa", "lw": 0.45, "alpha": 0.7, "shrinkA": 2, "shrinkB": 2}}
+    if method == "Reinhard":
+        return {**common, "force_text": (1.0, 1.25), "force_static": (1.05, 1.2), "force_explode": (1.05, 1.15), "force_pull": (0.02, 0.02), "expand": (1.12, 1.22), "max_move": (32, 42), "explode_radius": "auto"}
+    return {**common, "force_text": (0.7, 0.9), "force_static": (0.9, 1.05), "force_explode": (1.0, 1.1), "force_pull": (0.03, 0.03), "expand": (1.08, 1.15), "max_move": (22, 30), "explode_radius": "auto"}
+
+
 def build_baselines(ref: torch.Tensor, src: torch.Tensor) -> dict[str, torch.Tensor]:
     ref_chw = ref.squeeze(0).float()
     ref_hwc = _to_nhwc(ref)[0]
@@ -195,11 +258,11 @@ def collect_results(ref: torch.Tensor, src: torch.Tensor, baselines: dict[str, t
     cuda = torch.device("cuda") if torch.cuda.is_available() else None
 
     def add(method: str, package: str, device: torch.device, fn) -> None:
-        ms = _time_ms(fn, device)
-        tps = BATCH * 1000.0 / ms if ms > 0 else float("inf")
-        mae = _mae(_as_nchw_float(fn()), baselines[method])
-        results.append({"method": method, "package": package, "device": "GPU" if device.type == "cuda" else "CPU", "time_ms": ms, "imgs_per_s": tps, "mae": mae})
-        print(f"{method:<20} {package:<24} {device.type:<5}  {tps:10.1f} img/s  MAE={mae:.4f}")
+        ms, ms_std, tps, tps_std = _time_stats(fn, device)
+        mae, mae_std = _mae_stats(_as_nchw_float(fn()), baselines[method])
+        results.append({"method": method, "package": package, "device": "GPU" if device.type == "cuda" else "CPU", "time_ms": ms, "time_ms_std": ms_std, "imgs_per_s": tps, "imgs_per_s_std": tps_std, "mae": mae, "mae_std": mae_std})
+        # Std is text-only (no error bars on the Pareto plot).
+        print(f"{method:<20} {package:<24} {device.type:<5}  {tps:10.1f}±{tps_std:<8.1f} img/s  MAE={mae:.4f}±{mae_std:.4f}")
 
     # torchstain (CPU for-loop)
     ts_m = TorchMacenkoNormalizer()
@@ -357,7 +420,7 @@ def plot(results: list[dict], path: Path, mae_max: float = MAE_MAX) -> None:
         "ps.fonttype": 42,
     })
 
-    fig, axes = plt.subplots(1, 3, figsize=(11.0, 3.8), dpi=350, sharex=False, sharey=False)
+    fig, axes = plt.subplots(1, 3, figsize=(11.0, 2.5), dpi=350, sharex=False, sharey=False)
     fig.patch.set_facecolor("white")
     x_ticks_all = [MAE_FLOOR, 0.001, 0.01, 0.1, 1, 10, 100, mae_max]
 
@@ -383,13 +446,19 @@ def plot(results: list[dict], path: Path, mae_max: float = MAE_MAX) -> None:
         ys_pts = [p["imgs_per_s"] for p in pts]
 
         texts = []
-        for p, x, y in zip(pts, xs_pts, ys_pts, strict=True):
+        label_xs: list[float] = []
+        label_ys: list[float] = []
+        label_idx = _label_indices(pts, method)
+        for i, (p, x, y) in enumerate(zip(pts, xs_pts, ys_pts, strict=True)):
             color = _package_color(p["package"], method)
             marker = DEVICE_MARKER[p["device"]]
             # Stars read smaller than circles at the same ``s``.
             size = 110 if marker == "*" else 55
             ax.scatter(x, y, marker=marker, s=size, c=color, edgecolors="black", linewidths=0.7, zorder=3, alpha=0.9)
-            texts.append(ax.text(x, y, _panel_label(p["package"], method), fontsize=6.5, color="#222222", alpha=0.95, bbox={"boxstyle": "round,pad=0.08", "facecolor": "white", "edgecolor": "none", "alpha": 0.85}, zorder=4))
+            if i in label_idx:
+                texts.append(ax.text(x, y, _panel_label(p["package"], method), fontsize=6.5, color="#222222", alpha=0.95, bbox={"boxstyle": "round,pad=0.08", "facecolor": "white", "edgecolor": "none", "alpha": 0.85}, zorder=4))
+                label_xs.append(x)
+                label_ys.append(y)
 
         ax.axvline(mae_max, color="#555555", linestyle=":", linewidth=1.4, zorder=1, alpha=0.85)
 
@@ -405,7 +474,8 @@ def plot(results: list[dict], path: Path, mae_max: float = MAE_MAX) -> None:
         x_min = min(xs_pts)
         y_min, y_max = min(ys_pts), max(ys_pts)
         ax.set_xlim(max(x_min / 4, MAE_FLOOR * 0.5), mae_max * 1.25)
-        ax.set_ylim(y_min / 2.2, y_max * 2.5)
+        y_pad = 3.0 if method == "Reinhard" else 2.5
+        ax.set_ylim(y_min / 2.2, y_max * y_pad)
         ticks = [t for t in x_ticks_all if ax.get_xlim()[0] <= t <= mae_max * 1.25]
         if mae_max not in ticks:
             ticks.append(mae_max)
@@ -415,32 +485,18 @@ def plot(results: list[dict], path: Path, mae_max: float = MAE_MAX) -> None:
         ax.set_xlabel("Mean absolute error vs stable baseline  (lower is better)", fontsize=8, labelpad=2)
 
         if texts:
-            adjust_text(
-                texts,
-                x=xs_pts,
-                y=ys_pts,
-                ax=ax,
-                force_text=(0.9, 1.1),
-                force_static=(0.6, 0.8),
-                force_explode=(1.2, 1.4),
-                force_pull=(0.015, 0.015),
-                expand=(1.25, 1.35),
-                max_move=(45, 55),
-                explode_radius="auto",
-                ensure_inside_axes=True,
-                expand_axes=True,
-                iter_lim=500,
-                min_arrow_len=3,
-                arrowprops={"arrowstyle": "-", "color": "#aaaaaa", "lw": 0.45, "alpha": 0.7, "shrinkA": 2, "shrinkB": 2},
-            )
+            if method == "Reinhard":
+                _seed_label_positions(texts, label_xs, label_ys)
+            adjust_text(texts, x=label_xs, y=label_ys, ax=ax, **_adjust_text_kwargs(method))
 
         sns.despine(ax=ax, left=False, bottom=False)
         ax.tick_params(axis="both", which="major", direction="in", length=4, width=0.8, pad=2, color="#222222", bottom=True, left=True, top=False, right=False)
         ax.tick_params(axis="x", which="major", labelrotation=35)
         ax.tick_params(axis="both", which="minor", length=0)
 
-    # Two legends on the rightmost panel: package colors (squares) above; device/lines below.
-    # Pass explicit handles so the device legend does not also pick up package artists.
+    # Two legends on the rightmost (HistogramMatching) panel: packages upper-left
+    # (empty of markers there); device/lines lower-right. Explicit handles so the
+    # device legend does not also pick up package artists.
     ax_leg = axes[-1]
     packages_in_plot: list[str] = []
     for p in results:
@@ -449,9 +505,7 @@ def plot(results: list[dict], path: Path, mae_max: float = MAE_MAX) -> None:
             packages_in_plot.append(fam)
 
     pkg_handles = [ax_leg.scatter([], [], marker="s", c=PACKAGE_COLOR.get(lab, PACKAGE_COLOR_FALLBACK), s=45, edgecolors="black", linewidths=0.6, alpha=0.9) for lab in packages_in_plot]
-    leg_pkg = ax_leg.legend(
-        handles=pkg_handles, labels=packages_in_plot, loc="lower right", bbox_to_anchor=(1.0, 0.175), ncol=2, columnspacing=0.8, frameon=True, fancybox=False, facecolor="white", framealpha=0.95, edgecolor="#cccccc", fontsize=6, borderpad=0.35, labelspacing=0.25, handletextpad=0.35, title="Package", title_fontsize=6.5
-    )
+    leg_pkg = ax_leg.legend(handles=pkg_handles, labels=packages_in_plot, loc="upper left", ncol=2, columnspacing=0.8, frameon=True, fancybox=False, facecolor="white", framealpha=0.95, edgecolor="#cccccc", fontsize=6, borderpad=0.35, labelspacing=0.25, handletextpad=0.35, title="Package", title_fontsize=6.5)
     leg_pkg.get_frame().set_linewidth(0.6)
     ax_leg.add_artist(leg_pkg)
 
@@ -484,6 +538,7 @@ def main() -> None:
     results = collect_results(ref, src, baselines)
     if not results:
         raise SystemExit("No results to plot.")
+    _print_std_summary(results)
     plot(results, OUT, MAE_MAX)
 
 
