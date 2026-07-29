@@ -13,6 +13,7 @@
 ### Added
 
 - Public `StainNormalizerTransform` (`mode="reference"` | `"batch"`) for DataLoader pipelines (`normalize_to_0_1` defaults to `True` for Macenko)
+- `torch_cuda` Macenko CUDA kernel (fp64 covariance + analytic 3×3 eigh + on-device concentration solve); optional `precision="fast"` (fp32 cov/eigh, fp16 pixels)
 
 ### Removed
 
@@ -21,6 +22,13 @@
 ### Testing
 
 - Correctness suite compares each normalizer × backend (`torch`, `torch_cuda`) to external baselines (torchstain / skimage) with **absolute** `atol` / `MACENKO_ATOL` (plus HE / maxC floors for Macenko)
+- Macenko correctness uses real H&E tiles instead of random noise: noise gives a near-isotropic OD covariance with degenerate leading eigenvectors, so the stain plane (and H/E split) is eigensolver-dependent and parity there is ill-posed
+
+### Fixed
+
+- Macenko: remove reconstructed OD≥0 clamp so RGB can exceed `Io` (torchstain parity)
+- Macenko: always use `lstsq` (drop `pinv`/cond fallback)
+- Macenko (`torch` backend): run 3×3 `eigh` on Torch CPU to avoid GPU plane flips when eigenvalues are nearly degenerate
 
 ### Changed
 
@@ -28,22 +36,6 @@
 - Install docs emphasize `make install*` and Linux-first support (macOS/Windows best-effort)
 - Silent backend selection (no print side-effect on init)
 - `make build` syncs `--group dev` instead of `--all-groups`
-
-## Unreleased (pre-0.1.0 notes)
-
-### Changed (Macenko CUDA kernel)
-
-- `torch_cuda` Macenko is now a fully on-GPU kernel: a custom fp64 covariance reduction, an analytic 3×3 symmetric eigendecomposition (matches `torch.linalg.eigh` to machine precision), and the concentration solve all run on device — no per-image CPU round-trip. ~5–9× faster than the previous ATen/CPU-offload path while staying within a grey level of torchstain on H&E tiles (e.g. 555 → 5177 img/s at 64×150², 86 → 476 img/s at 32×512²).
-- Macenko correctness test now runs on real H&E tiles instead of random noise: noise gives a near-isotropic OD covariance with degenerate leading eigenvectors, so the stain plane (and H/E split) is eigensolver-dependent and parity there is ill-posed.
-
-### Fixed
-
-- Macenko: remove reconstructed OD≥0 clamp so RGB can exceed `Io` (torchstain parity)
-- Macenko: always use `lstsq` (drop `pinv`/cond fallback)
-- Macenko: run 3×3 `eigh` on Torch CPU to avoid GPU plane flips
-
-### Changed
-
 - Pin correctness/benchmark dependency `torchstain==1.4.1`
 - Tighten Macenko vs torchstain relative-error threshold to `0.01`
-- `torch_cuda` Macenko now has its own CUDA kernel (fp64 covariance + analytic eigh + on-device solve), matching Reinhard/HM which already ship real CUDA kernels
+- `torch_cuda` Macenko is a fully on-GPU path (custom fp64 covariance reduction + analytic 3×3 symmetric eigendecomposition matching `torch.linalg.eigh` to machine precision + on-device concentration solve) — no per-image CPU round-trip. ~5–9× faster than the previous ATen/CPU-offload path while staying within a grey level of torchstain on H&E tiles (e.g. 555 → 5177 img/s at 64×150², 86 → 476 img/s at 32×512²)

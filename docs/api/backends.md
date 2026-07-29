@@ -24,4 +24,4 @@ normalizer = Reinhard(device="cuda", backend="torch_cuda")
 
 ## When to use torch_cuda
 
-Prefer `torch_cuda` for Reinhard and Histogram Matching when the extension builds successfully (real CUDA kernels). Macenko's CUDA path uses an ATen parity implementation and is typically close to Torch speed (~1×).
+Prefer `torch_cuda` when the extension builds successfully: Reinhard, Histogram Matching, and Macenko all ship real CUDA kernels. Macenko defaults to `precision="stable"` (fp64 cov / analytic eigh); use `precision="fast"` for lower latency when a small MAE trade-off is acceptable.

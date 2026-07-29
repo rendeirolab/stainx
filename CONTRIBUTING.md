@@ -38,7 +38,7 @@ flowchart TB
 
 - **Public API**: normalizers + `StainNormalizerTransform`
 - **Template**: backend selection (`torch` / `torch_cuda`)
-- **Backends**: Python Torch ops; optional CUDA extension for Reinhard / HM kernels (Macenko uses ATen parity path)
+- **Backends**: Python Torch ops; optional CUDA extension for Reinhard / HM / Macenko kernels
 - **Shared kernels**: `csrc/` included by `stainx_cuda_torch` wrappers
 
 ## Development setup
