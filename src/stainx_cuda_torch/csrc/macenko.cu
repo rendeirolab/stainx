@@ -112,7 +112,7 @@ __device__ void analytic_eigh_sym3(const T A[3][3], T evecs2[3][2]) {
         // Insertion-sort ascending.
         for (int i = 1; i < 3; ++i) {
             const T key = e_asc[i];
-            int j = i - 1;
+            int j       = i - 1;
             while (j >= 0 && e_asc[j] > key) {
                 e_asc[j + 1] = e_asc[j];
                 --j;
