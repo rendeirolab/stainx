@@ -59,20 +59,10 @@ torch::Tensor histogram_matching_cuda(torch::Tensor input_images, torch::Tensor 
         images_uint8            = input_images.contiguous();
         was_uint8_or_high_range = true;
     } else {
-        // Check if input is in [0, 1] range using PyTorch's max operation (safer than CUB)
-        // This avoids potential memory access issues with CUB DeviceReduce
-        float max_val = input_images.max().item<float>();
-
-        // Determine if we need to scale
-        if (max_val <= 1.0f) {
-            needs_scale_back = true;
-        } else {
-            was_uint8_or_high_range = true;
-        }
-
-        // Convert to uint8 using CUDA kernel
-        // Ensure input is contiguous for kernel access
-        torch::Tensor input_flat = input_images.contiguous().view(-1);
+        // Float is assumed [0, 1] — scale to uint8 (no max()>1 heuristic / sync).
+        // Cast to float32 before data_ptr<float>() so float16/float64 (e.g. AMP) are safe.
+        needs_scale_back         = true;
+        torch::Tensor input_flat = input_images.to(torch::kFloat32).contiguous().view(-1);
         images_uint8             = torch::empty({N, C, H, W}, torch::TensorOptions().dtype(torch::kUInt8).device(input_images.device()));
         int total_pixels         = N * C * H * W;
         int num_blocks           = (total_pixels + num_threads - 1) / num_threads;

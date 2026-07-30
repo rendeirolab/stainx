@@ -2,6 +2,12 @@
 
 This page provides practical examples for common use cases with StainX.
 
+For training pipelines see [Training](training.md).
+
+Repository snippets:
+
+- `examples/torch_transform_example.py`
+
 ## Basic Usage
 
 The simplest workflow: fit on a reference image, then transform source images.

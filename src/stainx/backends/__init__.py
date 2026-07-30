@@ -5,13 +5,6 @@
 # See the LICENSE file for details.
 from stainx.backends.torch_backend import HistogramMatchingTorch, MacenkoTorch, ReinhardTorch, TorchBackendBase
 
-# Note: cupy_backend, torch_cuda_backend, and cupy_cuda_backend are imported lazily
-# when needed to avoid import errors when optional dependencies are not installed
+# torch_cuda_backend is imported lazily when needed (optional CUDA extension)
 
-try:
-    from stainx.backends.cupy_cuda_backend import CupyCUDABackendBase, HistogramMatchingCuPyCUDA, MacenkoCuPyCUDA, ReinhardCuPyCUDA
-
-    __all__ = ["CupyCUDABackendBase", "HistogramMatchingCuPyCUDA", "HistogramMatchingTorch", "MacenkoCuPyCUDA", "MacenkoTorch", "ReinhardCuPyCUDA", "ReinhardTorch", "TorchBackendBase"]
-except Exception:
-    # CuPy missing, or present but unusable (e.g. driver/runtime mismatch). Torch backends remain available.
-    __all__ = ["HistogramMatchingTorch", "MacenkoTorch", "ReinhardTorch", "TorchBackendBase"]
+__all__ = ["HistogramMatchingTorch", "MacenkoTorch", "ReinhardTorch", "TorchBackendBase"]

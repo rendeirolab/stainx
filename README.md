@@ -8,23 +8,32 @@
 </div>
 
 
-Enhanced stain normalization for histopathology images with batch processing support. Optimized for CPU, GPU (CUDA), and MPS (Apple Silicon) devices.
+Torch-first stain normalization for histopathology images with batch processing, training transforms, and optional CUDA kernels.
+
+> **0.1.0 migration:** CuPy backends are removed. Pin `stainx<0.1` to stay on the CuPy stack, or switch to Torch tensors with `backend="torch"` / `"torch_cuda"`.
 
 ## Features
 
 - **Multiple algorithms**: Histogram Matching, Reinhard, and Macenko normalization
-- **Automatic backend selection**: PyTorch (CPU/GPU/MPS) or optimized CUDA kernels
-- **Batch processing**: Enhanced normalization through efficient batch processing of multiple images
-- **Flexible device support**: CPU, CUDA, MPS (Apple Silicon)
+- **Torch backends**: `torch` (CPU / CUDA / MPS) and optional `torch_cuda` compiled kernels
+- **Training-ready**: `StainNormalizerTransform` for DataLoader / torchvision pipelines
 
 ## Installation
 
 ### Requirements
 
-- Python >=3.11
-- PyTorch >=2.0.0
-- CuPy >=12.0.0 (cupy-cuda12x>=12.0.0 for non-ARM64, cupy>=12.0.0 for ARM64)
-- CUDA (optional, for GPU acceleration)
+- Python >= 3.11
+- PyTorch >= 2.0.0
+- CUDA Toolkit + nvcc (optional; builds `stainx_cuda_torch` when available)
+
+**Supported platforms**
+
+| Platform | Support |
+|----------|---------|
+| Linux + CUDA | Primary (Torch + optional CUDA extension) |
+| Linux CPU | Primary (Torch backend) |
+| macOS (MPS / CPU) | Best-effort Torch path (no CUDA extension) |
+| Windows | Best-effort Torch path (CUDA extension not guaranteed) |
 
 ### Install from PyPI
 
@@ -32,86 +41,64 @@ Enhanced stain normalization for histopathology images with batch processing sup
 pip install stainx
 ```
 
-### Install from source
+### Install from source (recommended: Makefile)
 
 ```bash
 git clone https://github.com/rendeirolab/stainx.git
 cd stainx
-pip install .
+make install          # editable + best-effort CUDA build
+# or
+make install-dev      # + test/docs tooling
 ```
 
-CUDA extensions will be automatically built if CUDA is available.
+Plain pip also works:
+
+```bash
+pip install .
+# CUDA extension builds automatically when CUDA/nvcc are present; otherwise Torch-only.
+```
 
 ## Quick Start
 
 ```python
 import torch
-from stainx import Reinhard, Macenko, HistogramMatching
+from stainx import Reinhard, Macenko, HistogramMatching, StainNormalizerTransform
 
-# Load your images as torch.Tensor (N, C, H, W) or (N, H, W, C)
-reference_image = torch.randn(1, 3, 512, 512)  # Reference image
-source_images = torch.randn(10, 3, 512, 512)  # Images to normalize
+reference_image = torch.randn(1, 3, 512, 512)
+source_images = torch.randn(10, 3, 512, 512)
 
-# Reinhard normalization
-normalizer = Reinhard(device="cuda")  # or "cpu"
+normalizer = Reinhard(device="cuda")  # or "cpu" / "mps"
 normalizer.fit(reference_image)
 normalized = normalizer.transform(source_images)
 
-# Macenko normalization
-normalizer = Macenko(device="cuda")
-normalizer.fit(reference_image)
-normalized = normalizer.transform(source_images)
-
-# Histogram Matching
-normalizer = HistogramMatching(device="cuda", channel_axis=1)
-normalizer.fit(reference_image)
-normalized = normalizer.transform(source_images)
+# Training transform (fit once on a reference — preferred for supervised training)
+transform = StainNormalizerTransform(
+    method="macenko",
+    mode="reference",
+    reference=reference_image,
+    device="cuda",
+    # normalize_to_0_1 defaults to True for Macenko (float [0,1] pipelines)
+)
+batch_out = transform(source_images)
 ```
+
+### Modes
+
+| Mode | Behavior | When to use |
+|------|----------|-------------|
+| `reference` | Fit once on a fixed reference, then transform | Default for training |
+| `batch` | Fit on the current batch every forward | Exploratory / domain-shift checks; usually unsafe for reproducible supervised training |
 
 ## API
 
-All normalizers follow a scikit-learn-like interface:
+- `fit(reference_images)` / `transform(images)` / `fit_transform(images)`
+- `StainNormalizerTransform` — `nn.Module` for pipelines
+- Backends: `"torch"` (default) or `"torch_cuda"` when the extension is built
 
-- `fit(reference_images)`: Compute normalization parameters from reference image(s)
-- `transform(images)`: Apply normalization to images
-- `fit_transform(images)`: Fit and transform in one step
+## Documentation
 
-### Available Normalizers
-
-- `Reinhard`: Reinhard color normalization
-- `Macenko`: Macenko stain separation and normalization
-- `HistogramMatching`: Histogram matching normalization
-
-### Backend Selection
-
-Backends are automatically selected based on device availability:
-- **torch_cuda**: Optimized CUDA extension when available
-- **cupy_cuda**: CuPy CUDA backend when available
-- **torch**: Fallback backend, works on CPU, CUDA, and MPS
-
-You can explicitly specify a backend:
-
-```python
-normalizer = Reinhard(device="cuda", backend="torch")  # Force torch backend
-normalizer = Reinhard(device="cuda", backend="torch_cuda")  # Force torch_cuda backend
-```
-
-## Requirements
-
-- Python >=3.11
-- PyTorch >=2.0.0
-- CUDA Toolkit (optional, for CUDA backend)
+See the [documentation site](https://stainx.readthedocs.io/) for installation details, training usage, and examples.
 
 ## License
 
-This project is licensed under the GNU General Public License v3 (GPL-3.0-or-later).
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on contributing to StainX.
-
-## Links
-
-- **GitHub**: https://github.com/rendeirolab/stainx
-- **Issues**: https://github.com/rendeirolab/stainx/issues
-
+GPL-3.0-or-later

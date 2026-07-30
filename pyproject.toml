@@ -10,8 +10,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stainx"
-version = "0.0.21"
-description = "Enhanced stain normalization for histopathology images with batch processing support. Optimized for CPU, GPU (CUDA), and MPS (Apple Silicon) devices."
+version = "0.1.0"
+description = "Torch-first stain normalization for histopathology images with batch processing, training transforms, and optional CUDA kernels."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -35,17 +35,8 @@ classifiers = [
     "Topic :: Software Development",
 ]
 
-[project.optional-dependencies]
-cupy = [
-    # CuPy dropped macOS support; keep optional for Linux/Windows only.
-    # Use CUDA 13 wheels on x86_64 Linux/Windows (matches PyTorch cu13* runners).
-    "cupy-cuda13x>=13.0.0; platform_system != 'Darwin' and platform_machine != 'arm64'",
-    "cupy>=12.0.0; platform_system != 'Darwin' and platform_machine == 'arm64'",
-]
-
 [tool.setuptools.package-data]
 stainx_cuda_torch = ["csrc/*.cpp", "csrc/*.cu", "csrc/*.h", "csrc/*.hpp", "csrc/*.cuh"]
-stainx_cuda_cupy = ["csrc/*.cpp", "csrc/*.cu", "csrc/*.h", "csrc/*.hpp", "csrc/*.cuh"]
 
 [dependency-groups]
 dev = [
@@ -66,14 +57,11 @@ dev = [
     "pymdown-extensions>=10.0.0",
     "ninja>=1.10.0",
     "pybind11>=2.10.0",
-    # CuPy dropped macOS support; keep dev deps installable on macOS.
-    "cupy-cuda13x>=13.0.0; platform_system != 'Darwin' and platform_machine != 'arm64'",
-    "cupy>=12.0.0; platform_system != 'Darwin' and platform_machine == 'arm64'",
-    "scipy>=1.14.1; python_version>='3.13'",  # Python 3.13 requires scipy 1.14.1+ for pre-built wheels
-    "scipy>=1.12.0,<1.13.0; python_version<'3.13'",  # Match benchmark group constraint for older Python versions
+    "scipy>=1.14.1; python_version>='3.13'",
+    "scipy>=1.12.0,<1.13.0; python_version<'3.13'",
 ]
-# Benchmark dependencies require Python 3.12 due to imgui compatibility
-# Use: uv sync --group benchmark --python 3.12
+# Benchmark deps: Slideflow 2.x pulls pandas<2 (no cp312 wheels). Use Python 3.11.
+# Use: uv sync --group benchmark --python 3.11
 benchmark = [
     "prettytable",
     "slideflow<3.0.0",
@@ -83,16 +71,26 @@ benchmark = [
     "numba>=0.60.0",
     "umap-learn>=0.5.9",
     "torchstain==1.4.1",  # Pin same revision as correctness tests (dev group)
+    "staintools",  # Reinhard / Macenko CPU reference (StainTools)
     "scikit-image",
+    "color-matcher",  # Independent HM + photo Reinhard peer
+    "tiatoolbox",  # Macenko + Reinhard
+    "torch-staintools",  # Macenko + Reinhard (CPU/GPU)
+    "wsi-normalizer",  # Reinhard only here (Macenko needs working SPAMS Fortran arrays)
+    "colortrans",  # Reinhard color transfer
+    "color_transfer",  # Reinhard (pyimagesearch)
+    "opencv-python-headless",  # color_transfer BGR conversion
     "matplotlib",
+    "seaborn",
+    "adjustText",
     "numpy<2.0.0",  # Constrain numpy for pandas 1.5.3 compatibility (from slideflow<3.0.0)
     "scipy>=1.14.1; python_version>='3.13'",  # Python 3.13 requires scipy 1.14.1+ for wheels
     "scipy<1.13.0; python_version<'3.13'",  # Constrain scipy for lifelines compatibility (trapz was removed in 1.13.0)
 ]
 
 [tool.uv]
-# Benchmark dependencies require Python 3.12 due to imgui==2.0.0 compatibility
-# When syncing benchmarks, use: uv sync --group benchmark --python 3.12
+# Benchmark group needs Python 3.11 (slideflow<3 → pandas<2; no wheels for 3.12+)
+# When syncing benchmarks, use: uv sync --group benchmark --python 3.11
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

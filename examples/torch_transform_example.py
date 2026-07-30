@@ -6,7 +6,6 @@
 # See the LICENSE file for details.
 
 import os
-import sys
 
 import torch
 import torch.nn as nn
@@ -14,10 +13,7 @@ from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
-from stainx import HistogramMatching, Macenko, Reinhard
-from stainx.utils import ChannelFormatConverter
+from stainx import StainNormalizerTransform
 
 
 class BatchToImage(nn.Module):
@@ -31,35 +27,6 @@ class BatchToImage(nn.Module):
             batch_tensor = torch.stack([self.to_image(img) for img in imgs])
             return batch_tensor.to(self.device) if self.device else batch_tensor
         return self.to_image(imgs).to(self.device) if self.device else self.to_image(imgs)
-
-
-class StainNormalizerTransform(nn.Module):
-    def __init__(self, normalizer, reference_image, device=None):
-        super().__init__()
-        self.normalizer = normalizer
-        device = device or (reference_image.device if hasattr(reference_image, "device") else "cpu")
-
-        if reference_image.dim() == 3:
-            reference_image = reference_image.unsqueeze(0)
-        reference_image = reference_image.to(device)
-
-        if isinstance(normalizer, HistogramMatching):
-            converter = ChannelFormatConverter(channel_axis=1)
-            reference_image = converter.prepare_for_normalizer(reference_image)
-
-        self.normalizer.fit(reference_image)
-
-    def forward(self, img):
-        was_single = img.dim() == 3
-        if was_single:
-            img = img.unsqueeze(0)
-
-        if isinstance(self.normalizer, HistogramMatching):
-            converter = ChannelFormatConverter(channel_axis=1)
-            img = converter.prepare_for_normalizer(img)
-
-        result = self.normalizer.transform(img)
-        return result.squeeze(0) if was_single else result
 
 
 class ImageDataset(Dataset):
@@ -80,9 +47,8 @@ def main():
     reference_img = Image.open(os.path.join(data_dir, "target.png")).convert("RGB")
     reference_tensor = v2.ToImage()(reference_img).to(device)
 
-    stain_transform = StainNormalizerTransform(HistogramMatching(device=device, channel_axis=1), reference_tensor, device)
-    stain_transform = StainNormalizerTransform(Reinhard(device=device), reference_tensor, device)
-    stain_transform = StainNormalizerTransform(Macenko(device=device), reference_tensor, device)
+    # normalize_to_0_1=True: Macenko returns [0,1] to match ToDtype(scale=True) + ImageNet Normalize.
+    stain_transform = StainNormalizerTransform(method="macenko", mode="reference", reference=reference_tensor, device=device, normalize_to_0_1=True)
 
     transforms = v2.Compose([BatchToImage(device=device), v2.ToDtype(torch.float32, scale=True), v2.RandomResizedCrop(size=(224, 224), antialias=True), stain_transform, v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 

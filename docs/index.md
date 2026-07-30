@@ -50,7 +50,7 @@ normalized = normalizer.transform(source_images)  # Process entire batch at once
 
 StainX provides significant performance improvements, especially when processing batches of images. Based on benchmarks on NVIDIA RTX A6000:
 
-- **CUDA Backend Speedup**: ~5.7× for Reinhard (`torch_cuda` kernels); Macenko `torch_cuda` is parity-first (~1× vs torch)
+- **CUDA Backend Speedup**: ~5.7× for Reinhard; Macenko `torch_cuda` is ~5–9× vs the previous ATen/CPU-offload path (custom on-GPU kernel)
 - **Batch Processing Throughput**: Up to 46,600 images/second (vs ~5,500 for single images)
 - **Optimal Batch Size**: 64-128 images provides best performance
 
@@ -60,21 +60,24 @@ See the [Benchmarks](benchmarks.md) page for detailed performance benchmarks and
 
 ```bash
 pip install stainx
+# from source: make install
 ```
 
-CUDA extensions will be automatically built if CUDA is available. Requires PyTorch >=2.0.0 and CuPy >=12.0.0.
+CUDA extensions build automatically when CUDA/nvcc are available. Requires PyTorch >= 2.0.0 (Torch-only; CuPy is not used).
 
 ## Features
 
 - **Multiple algorithms**: Histogram Matching, Reinhard, and Macenko normalization
-- **Automatic backend selection**: torch, torch_cuda, cupy, or cupy_cuda backends
-- **Batch processing**: Enhanced normalization through efficient batch processing of multiple images
+- **Torch backends**: `torch` and optional `torch_cuda`
+- **Training transforms**: `StainNormalizerTransform` for DataLoader pipelines
+- **Batch processing**: Efficient multi-image normalization
 - **Flexible device support**: CPU, CUDA, MPS (Apple Silicon)
 
 ## Documentation
 
 - [Quick Start Guide](quickstart.md) - Get started in minutes
 - [Installation Guide](installation.md) - Detailed installation instructions
+- [Training](training.md) - DataLoader / training pipelines
 - [Examples](examples.md) - Usage examples and patterns
 - [Benchmarks](benchmarks.md) - Performance benchmarks and comparisons
 - [API Reference](api/index.md) - Complete API documentation

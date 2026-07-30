@@ -1,15 +1,17 @@
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
 from stainx.base import StainNormalizerBase
 from stainx.normalizers import HistogramMatching, Macenko, Reinhard
+from stainx.transforms import StainNormalizerTransform
 
-__all__ = ["HistogramMatching", "Macenko", "Reinhard", "StainNormalizerBase", "__version__"]
+__all__ = ["HistogramMatching", "Macenko", "Reinhard", "StainNormalizerBase", "StainNormalizerTransform", "__version__"]
 
 
-def _get_version():
-    """Get version from package metadata or pyproject.toml."""
-    # Get version from installed package metadata first
-    return version("stainx")
+def _get_version() -> str:
+    try:
+        return version("stainx")
+    except PackageNotFoundError:
+        return "0.1.0"
 
 
 __version__ = _get_version()

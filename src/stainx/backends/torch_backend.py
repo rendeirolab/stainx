@@ -15,8 +15,8 @@ class TorchBackendBase:
 
     @staticmethod
     def rgb_to_lab_torch(rgb: torch.Tensor, channel_axis: int = 1) -> torch.Tensor:
-        if rgb.max() > 1.0:
-            rgb = rgb / 255.0
+        # uint8 is [0, 255]; float is assumed already in [0, 1] (do not use max()>1).
+        rgb = rgb.float() / 255.0 if rgb.dtype == torch.uint8 else rgb.float()
 
         if channel_axis == -1 or (channel_axis == 3 and rgb.ndim == 4):
             rgb = rgb.permute(0, 3, 1, 2)
@@ -102,18 +102,22 @@ class TorchBackendBase:
 
     @staticmethod
     def normalize_to_float_torch(images: torch.Tensor) -> torch.Tensor:
-        if images.max() > 1.0:
+        """Convert images to float in ``[0, 1]``.
+
+        ``uint8`` is treated as ``[0, 255]``. Floating tensors are assumed already
+        in ``[0, 1]`` — do not use ``max()>1`` (ColorJitter can push unit floats
+        above 1 and would silently mis-scale the batch).
+        """
+        if images.dtype == torch.uint8:
             return images.float() / 255.0
         return images.float()
 
     def images_to_uint8_torch(self, images: torch.Tensor) -> tuple[torch.Tensor, bool]:
-        if images.max() <= 1.0:
-            images_uint8 = (images * 255.0).clamp(0, 255).to(torch.uint8)
-            needs_scale_back = True
-        else:
-            images_uint8 = images.clamp(0, 255).to(torch.uint8)
-            needs_scale_back = False
-        return images_uint8, needs_scale_back
+        if images.dtype == torch.uint8:
+            return images, False
+        # Float is assumed [0, 1].
+        images_uint8 = (images.float() * 255.0).clamp(0, 255).to(torch.uint8)
+        return images_uint8, True
 
     def preserve_dtype_torch(self, result: torch.Tensor, original_dtype: torch.dtype, was_uint8_or_high_range: bool = False, result_in_0_255_range: bool = False) -> torch.Tensor:
         # If result is in [0, 1] range but we need [0, 255], scale it
@@ -199,7 +203,7 @@ class HistogramMatchingTorch(TorchBackendBase):
             per_channel_histograms = None
 
         original_dtype = images_normalized.dtype
-        was_uint8_or_high_range = images_normalized.dtype == torch.uint8 or images_normalized.max() > 1.0
+        was_uint8_or_high_range = images_normalized.dtype == torch.uint8
 
         images_uint8, needs_scale_back = self.images_to_uint8_torch(images_normalized)
 
@@ -306,8 +310,8 @@ class ReinhardTorch(TorchBackendBase):
         original_dtype = images.dtype
         was_uint8 = original_dtype == torch.uint8
 
-        # Check range once and normalize inline
-        images_float = images.float() / 255.0 if was_uint8 or images.max() > 1.0 else images.float()
+        # uint8 → [0,1]; float is assumed already [0,1] (no max()>1 heuristic).
+        images_float = images.float() / 255.0 if was_uint8 else images.float()
 
         lab = self.rgb_to_lab_torch(images_float, channel_axis=1)
 
@@ -323,8 +327,8 @@ class ReinhardTorch(TorchBackendBase):
         original_dtype = images.dtype
         was_uint8 = original_dtype == torch.uint8
 
-        # Check range once and normalize
-        if was_uint8 or images.max() > 1.0:
+        # uint8 → [0,1]; float is assumed already [0,1] (no max()>1 heuristic).
+        if was_uint8:
             images_float = images.float() / 255.0
             was_uint8_or_high_range = True
         else:
@@ -376,6 +380,22 @@ class MacenkoTorch(TorchBackendBase):
         device = a.device
         return torch.linalg.lstsq(a.cpu(), b.cpu(), rcond=None)[0].to(device)
 
+    @staticmethod
+    def _cov_torch(od_filtered: torch.Tensor) -> torch.Tensor:
+        """3x3 OD covariance in float32 on CPU.
+
+        Near-degenerate Macenko spectra amplify CUDA float32 reduction noise into
+        stain-plane flips. Forming cov on CPU matches torchstain; callers keep the
+        large GEMMs (That / recon) on the original device.
+        """
+        x = od_filtered if od_filtered.device.type == "cpu" else od_filtered.cpu()
+        x_t = x.T
+        centered = x_t - x_t.mean(dim=1, keepdim=True)
+        n = x.shape[0]
+        if n <= 1:
+            return torch.zeros((3, 3), dtype=x.dtype)
+        return torch.matmul(centered, centered.T) / (n - 1)
+
     def _process_single_image_torch(self, od: torch.Tensor, stain_matrix: torch.Tensor, target_max_conc: torch.Tensor, beta: float, alpha: float, Io: float, H: int, W: int) -> torch.Tensor:
         # Reshape to (H*W, 3)
         od_reshaped = od.permute(1, 2, 0).reshape(-1, 3)
@@ -389,15 +409,10 @@ class MacenkoTorch(TorchBackendBase):
         if od_filtered.shape[0] < 3:
             od_filtered = od_reshaped
 
-        # Compute covariance matrix efficiently
-        od_filtered_T = od_filtered.T  # (3, num_filtered)
-        od_mean = od_filtered_T.mean(dim=1, keepdim=True)
-        od_centered = od_filtered_T - od_mean
-        num_pixels = od_filtered.shape[0]
-        cov = torch.matmul(od_centered, od_centered.T) / (num_pixels - 1) if num_pixels > 1 else torch.zeros((3, 3), dtype=od_centered.dtype, device=od_centered.device)
-
+        # CPU float32 cov + eigh; eigenvectors return to od.device for the rest.
+        cov = self._cov_torch(od_filtered)
         _, eigvecs = self._eigh_torch(cov)
-        eigvecs = eigvecs[:, [1, 2]]
+        eigvecs = eigvecs[:, [1, 2]].to(od.device)
 
         That = torch.matmul(od_filtered, eigvecs)
         phi = torch.atan2(That[:, 1], That[:, 0])
@@ -447,7 +462,11 @@ class MacenkoTorch(TorchBackendBase):
 
     def compute_reference_stain_matrix_torch(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         images_float = self.normalize_to_float_torch(images)
-        images_float = images_float.to(self.device)
+        # Fit on CPU float32 so HE / maxC match torchstain (same cov constraint as transform).
+        images_float = images_float.to("cpu")
+
+        if images_float.dim() != 4 or images_float.shape[1] != 3:
+            raise ValueError(f"Macenko fit expects NCHW with C=3, got shape {tuple(images_float.shape)}")
 
         _N, _C, _H, _W = images_float.shape
 
@@ -465,10 +484,7 @@ class MacenkoTorch(TorchBackendBase):
         mask = od_min >= 0.15
         od_for_cov = od_combined_T[mask]  # (num_pixels, 3)
 
-        # Compute covariance matrix
-        od_mean = od_for_cov.mean(dim=0, keepdim=True)
-        od_centered = od_for_cov - od_mean
-        cov = torch.matmul(od_centered.T, od_centered) / (od_for_cov.shape[0] - 1)
+        cov = self._cov_torch(od_for_cov)
 
         _eigvals, eigvecs = self._eigh_torch(cov)
 
@@ -497,9 +513,10 @@ class MacenkoTorch(TorchBackendBase):
 
         concentrations = self._lstsq_torch(HE, od_combined)
 
-        max_conc = torch.tensor([self._percentile_torch(concentrations[0, :], 99), self._percentile_torch(concentrations[1, :], 99)], device=self.device, dtype=torch.float32)
+        max_conc = torch.tensor([self._percentile_torch(concentrations[0, :], 99), self._percentile_torch(concentrations[1, :], 99)], dtype=torch.float32)
 
-        return stain_matrix, max_conc
+        out_device = torch.device(self.device) if not isinstance(self.device, torch.device) else self.device
+        return stain_matrix.to(out_device), max_conc.to(out_device)
 
     def transform(self, images: torch.Tensor, stain_matrix: torch.Tensor, target_max_conc: torch.Tensor) -> torch.Tensor:
         images = images.to(self.device, non_blocking=True)
@@ -507,14 +524,18 @@ class MacenkoTorch(TorchBackendBase):
         target_max_conc = target_max_conc.to(self.device, non_blocking=True)
 
         original_dtype = images.dtype
-        was_uint8_or_high_range = images.dtype == torch.uint8 or images.max() > 1.0
+        was_uint8_or_high_range = images.dtype == torch.uint8
 
         images_float = self.normalize_to_float_torch(images)
 
         if stain_matrix.shape != (3, 2):
             raise ValueError(f"stain_matrix must have shape (3, 2), got {stain_matrix.shape}")
 
+        if images_float.dim() != 4:
+            raise ValueError(f"Macenko expects NCHW images, got shape {tuple(images_float.shape)}")
         N, C, H, W = images_float.shape
+        if C != 3:
+            raise ValueError(f"Macenko expects 3 channels in dim 1 (NCHW), got C={C} with shape {tuple(images_float.shape)}")
 
         # Pre-compute constants
         Io = 240.0

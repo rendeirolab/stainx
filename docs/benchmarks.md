@@ -202,10 +202,9 @@ Based on benchmarks run on NVIDIA RTX A6000:
 - **Reinhard**: ~5.6–5.8× faster with torch_cuda backend (custom CUDA kernels)
   - 256×256 images, batch 32: ~42,300 vs ~7,400 img/s (~5.7×)
   - 512×512 images, batch 64: ~11,400 vs ~2,000 img/s (~5.8×)
-- **Macenko**: ~1.0–1.1× with torch_cuda vs torch (ATen parity path; not custom kernels)
-  - 256×256 images, batch 32: ~347 vs ~320 img/s (~1.09×)
-  - 512×512 images, batch 64: ~107 vs ~104 img/s (~1.03×)
-  - Pure-CUDA Macenko kernels were removed; `cupy_cuda` uses the same CuPy Macenko path as `cupy`
+- **Macenko**: ~5–9× faster with torch_cuda vs the previous ATen/CPU-offload path (custom on-GPU kernel)
+  - Example: 555 → 5177 img/s at 64×150²; 86 → 476 img/s at 32×512²
+  - Default `precision="stable"` (fp64 cov + analytic eigh); `precision="fast"` trades a little MAE for lower latency
 
 ### Batch Size Impact
 
@@ -224,12 +223,13 @@ Throughput increases significantly with batch size (Reinhard, 256×256 images, C
 
 - **Reinhard**: ~0.76ms (~42,300 images/second)
 - **HistogramMatching**: ~8.36ms (~3,800 images/second)
-- **Macenko**: ~92ms (~350 images/second) on the torch_cuda ATen parity path
+- **Macenko**: on-GPU CUDA kernel; throughput depends on tile size / batch / `precision` (see speedup notes above)
 
 ### Recommendations
 
 For best performance:
-- Use torch_cuda for Reinhard (and histogram matching where it wins); Macenko torch_cuda prioritizes torchstain parity over kernel speed
+- Use torch_cuda for Reinhard, Histogram Matching, and Macenko when the extension is built
+- Prefer Macenko `precision="stable"` for torchstain parity; use `precision="fast"` when latency matters more
 - Process images in batches of 64-128 images
 - Use appropriate image sizes for your use case
 - Reinhard is fastest, followed by HistogramMatching, then Macenko

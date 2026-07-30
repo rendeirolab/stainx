@@ -2,11 +2,18 @@
 
 ## Requirements
 
-- Python >=3.11
-- PyTorch >=2.0.0
-- CuPy >=12.0.0 (cupy-cuda12x>=12.0.0 for non-ARM64, cupy>=12.0.0 for ARM64)
-- CUDA Toolkit (optional, for CUDA backend acceleration)
-- Apple Silicon with macOS (optional, for MPS acceleration)
+- Python >= 3.11
+- PyTorch >= 2.0.0
+- CUDA Toolkit + nvcc (optional, for the `torch_cuda` extension)
+
+## Platform support
+
+| Platform | Support |
+|----------|---------|
+| Linux + CUDA | Primary — Torch + optional CUDA extension |
+| Linux CPU | Primary — Torch backend |
+| macOS (MPS / CPU) | Best-effort Torch path (no CUDA extension) |
+| Windows | Best-effort Torch path (CUDA extension not guaranteed) |
 
 ## Install from PyPI
 
@@ -14,25 +21,32 @@
 pip install stainx
 ```
 
-## Install from Source
+## Install from source (recommended)
 
 ```bash
 git clone https://github.com/rendeirolab/stainx.git
 cd stainx
-pip install .
+make install          # editable + best-effort CUDA build
+make install-dev      # + test/docs tooling
 ```
 
-CUDA extensions will be automatically built if CUDA is available.
+The Makefile never fails the install if CUDA/nvcc is missing — you continue with the Torch backend only.
 
-## Verify Installation
+Equivalent pip flow:
 
-After installation, verify that StainX is working correctly:
+```bash
+pip install .
+# or editable
+pip install -e .
+python setup.py build_ext --inplace  # optional; skipped safely without CUDA
+```
+
+## Verify installation
 
 ```python
 import torch
-from stainx import Reinhard
+from stainx import Reinhard, StainNormalizerTransform
 
-# Test basic functionality
 reference = torch.randn(1, 3, 256, 256)
 images = torch.randn(4, 3, 256, 256)
 
@@ -40,32 +54,24 @@ normalizer = Reinhard(device="cpu")
 normalizer.fit(reference)
 normalized = normalizer.transform(images)
 
-print(f"Normalized {images.shape[0]} images successfully!")
-print(f"Output shape: {normalized.shape}")
+transform = StainNormalizerTransform(method="reinhard", mode="reference", reference=reference, device="cpu")
+assert transform(images).shape == images.shape
+print("OK", normalized.shape)
 ```
 
-## Check Backend Availability
-
-To check if CUDA backends are available:
+## Check CUDA extension availability
 
 ```python
-from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE as TORCH_CUDA_AVAILABLE
-from stainx.backends.cupy_cuda_backend import CUDA_AVAILABLE as CUPY_CUDA_AVAILABLE
+from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
 
-if TORCH_CUDA_AVAILABLE:
-    print("Torch CUDA backend is available!")
-if CUPY_CUDA_AVAILABLE:
-    print("CuPy CUDA backend is available!")
+print("torch_cuda available:", CUDA_AVAILABLE)
 ```
 
-## Development Installation
-
-For development, install with development dependencies:
+## Development installation
 
 ```bash
-pip install -e ".[dev]"
-# or
 make install-dev
+# or
+uv sync --group dev
+pip install -e .
 ```
-
-This includes testing, linting, and documentation tools.

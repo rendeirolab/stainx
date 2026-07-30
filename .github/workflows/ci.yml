@@ -107,11 +107,18 @@ jobs:
           UV_CONCURRENT_DOWNLOADS: 50
         run: |
           uv sync --group dev
+          uv pip install -e .
 
-      - name: Build CUDA extension (if CUDA available)
+      - name: Build CUDA extension (if CUDA runtime and nvcc available)
         run: |
-          uv run python setup.py build_ext --inplace || echo "CUDA extension build skipped (CUDA not available on runner)"
-        continue-on-error: true
+          # setup.py only builds when torch.cuda.is_available(); require both gates
+          # so nvcc-without-GPU does not look like a successful CUDA build.
+          if uv run python -c 'import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)' \
+            && command -v nvcc >/dev/null 2>&1; then
+            uv run python setup.py build_ext --inplace
+          else
+            echo "CUDA runtime or nvcc not available; continuing with Torch backend only"
+          fi
 
       - name: Run tests
         run: |
@@ -231,8 +238,12 @@ jobs:
         run: |
           uv run python -c "
           import stainx_cuda_torch
+          from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
           print(f'CUDA extension imported successfully')
-          print(f'Functions available: {getattr(stainx_cuda_torch, \"FUNCTIONS_AVAILABLE\", False)}')
+          print(f'FUNCTIONS_AVAILABLE={stainx_cuda_torch.FUNCTIONS_AVAILABLE}')
+          print(f'CUDA_AVAILABLE={CUDA_AVAILABLE}')
+          assert stainx_cuda_torch.FUNCTIONS_AVAILABLE, 'stainx_cuda_torch built but FUNCTIONS_AVAILABLE is False'
+          assert CUDA_AVAILABLE, 'torch_cuda backend reported unavailable on GPU runner'
           "
 
       - name: Run tests
@@ -278,19 +289,18 @@ jobs:
           UV_CONCURRENT_DOWNLOADS: 50
         run: |
           uv sync --group dev
+          uv pip install -e .
 
-      - name: Build CUDA extension (if CUDA available)
+      - name: Build CUDA extension (if CUDA runtime and nvcc available)
         shell: pwsh
         run: |
-          # Suppress numpy warnings on Windows Python 3.13 (MINGW-W64 experimental warnings)
           $env:PYTHONWARNINGS = "ignore::RuntimeWarning"
-          $ErrorActionPreference = "Continue"
-          uv run python setup.py build_ext --inplace 2>&1 | Out-Null
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "CUDA extension build skipped (CUDA not available on runner)"
-            $LASTEXITCODE = 0  # Reset exit code so step doesn't fail
+          uv run python -c "import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)"
+          if ($LASTEXITCODE -eq 0 -and (Get-Command nvcc -ErrorAction SilentlyContinue)) {
+            uv run python setup.py build_ext --inplace
+          } else {
+            Write-Host "CUDA runtime or nvcc not available; continuing with Torch backend only"
           }
-        continue-on-error: true
 
       - name: Run tests
         shell: pwsh

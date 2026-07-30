@@ -16,7 +16,7 @@ MKDOCS := $(UV) run mkdocs
 help:
 	@echo "Available targets:"
 	@echo "  make build       - Build distribution packages (wheels + sdist) using uv build"
-	@echo "  make install     - Fast editable install for development (production deps only)"
+	@echo "  make install     - Fast editable install (Torch production deps + optional CUDA)"
 	@echo "  make install-dev - Install with dev dependencies"
 	@echo "  make clean       - Clean build artifacts and cache files"
 	@echo "  make test        - Run tests"
@@ -32,7 +32,7 @@ build:
 	fi
 	@echo "Creating virtual environment if not exists..."
 	@$(UV) venv .venv --seed
-	@$(UV) sync --all-groups
+	@$(UV) sync --group dev
 	@echo "Building distribution packages with uv build..."
 	$(UV) build
 	@echo "Build complete! Artifacts are in dist/"
@@ -43,12 +43,12 @@ install:
 		echo "uv is not installed. Installing uv..."; \
 		curl -LsSf https://astral.sh/uv/install.sh | sh; \
 	fi
-	@echo "Installing stainx in editable mode (fast, production deps only)..."
+	@echo "Installing stainx in editable mode (Torch production deps)..."
 	$(UV) pip install -e .
-	@echo "Installing ninja for faster builds..."
-	@$(UV) pip install ninja || echo "Warning: ninja installation failed, builds will be slower"
-	@echo "Building CUDA extension in-place (if CUDA is available)..."
-	@$(UV) run python setup.py build_ext --inplace || echo "Warning: CUDA extension build failed or skipped, continuing with PyTorch backend only"
+	@echo "Installing ninja for faster CUDA builds (optional)..."
+	@$(UV) pip install ninja || echo "Warning: ninja installation failed, CUDA builds will be slower if attempted"
+	@echo "Building CUDA extension in-place when CUDA/nvcc are available..."
+	@$(UV) run python setup.py build_ext --inplace || echo "CUDA extension build skipped; continuing with Torch backend only"
 	@echo "Installation complete!"
 
 # Install with dev dependencies
@@ -61,8 +61,8 @@ install-dev:
 	$(UV) sync --group dev
 	@echo "Installing stainx in editable mode..."
 	$(UV) pip install -e .
-	@echo "Building CUDA extension in-place (if CUDA is available)..."
-	@$(UV) run python setup.py build_ext --inplace || echo "Warning: CUDA extension build failed or skipped, continuing with PyTorch backend only"
+	@echo "Building CUDA extension in-place when CUDA/nvcc are available..."
+	@$(UV) run python setup.py build_ext --inplace || echo "CUDA extension build skipped; continuing with Torch backend only"
 	@echo "Installation with dev dependencies complete!"
 
 # Clean build artifacts and cache files
@@ -137,4 +137,3 @@ docs:
 	@echo "Building documentation with mkdocs..."
 	@.venv-rtd/bin/mkdocs build --strict
 	@echo "Documentation build successful! Output in site/"
-

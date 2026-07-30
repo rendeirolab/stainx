@@ -48,9 +48,9 @@ torch::Tensor reinhard_cuda(torch::Tensor input_images, torch::Tensor reference_
     cudaStream_t stream = at::cuda::getCurrentCUDAStream();
     cudaError_t err     = cudaSuccess;  // Declare once at function level
 
-    // Normalize input to [0, 1] float
+    // Normalize input to [0, 1] float (uint8 → /255; float assumed already [0,1]).
     torch::Tensor images_float;
-    if (input_images.dtype() == torch::kUInt8 || input_images.max().item<float>() > 1.0f) {
+    if (input_images.dtype() == torch::kUInt8) {
         images_float = input_images.to(torch::kFloat32) / 255.0f;
     } else {
         images_float = input_images.to(torch::kFloat32);
@@ -114,11 +114,8 @@ torch::Tensor reinhard_cuda(torch::Tensor input_images, torch::Tensor reference_
     // Reshape back to (N, C, H, W)
     torch::Tensor output = rgb_normalized.view({N, H, W, 3}).permute(at::IntArrayRef({0, 3, 1, 2}));
 
-    // Preserve original dtype
-    if (input_images.dtype() == torch::kUInt8 || input_images.max().item<float>() > 1.0f) {
-        output = (output * 255.0f).clamp(0.0f, 255.0f);
-        if (input_images.dtype() == torch::kUInt8) { output = output.to(torch::kUInt8); }
-    }
+    // Preserve original dtype (uint8 stays 0–255; float stays [0,1]).
+    if (input_images.dtype() == torch::kUInt8) { output = (output * 255.0f).clamp(0.0f, 255.0f).to(torch::kUInt8); }
 
     return output;
 }

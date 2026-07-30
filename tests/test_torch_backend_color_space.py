@@ -1,3 +1,9 @@
+# Copyright (C) Rendeiro Group, CeMM Research Center for Molecular Medicine of the Austrian Academy of Sciences
+# All rights reserved.
+#
+# This software is distributed under the terms of the GNU General Public License v3 (GPLv3).
+# See the LICENSE file for details.
+
 import torch
 
 from stainx.backends.torch_backend import TorchBackendBase
@@ -19,3 +25,11 @@ def test_rgb_to_lab_accepts_uint8_range_and_returns_float():
     lab = TorchBackendBase.rgb_to_lab_torch(rgb_u8, channel_axis=1)
     assert lab.dtype.is_floating_point
     assert lab.shape == rgb_u8.shape
+
+
+def test_rgb_to_lab_float_above_one_not_divided_by_255():
+    """Jitter can push float >1; dtype gate must not treat that as [0, 255]."""
+    rgb = torch.full((1, 3, 4, 4), 1.2)
+    lab = TorchBackendBase.rgb_to_lab_torch(rgb, channel_axis=1)
+    # /255 path would produce near-black / near-zero L.
+    assert float(lab[:, 0].amin()) > 50.0

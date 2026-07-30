@@ -250,23 +250,21 @@ if torch.cuda.is_available() and "CUDA_HOME" not in os.environ:
             print(f"Auto-detected CUDA_HOME={os.environ['CUDA_HOME']} from nvcc at {nvcc_path}")
 
 if torch.cuda.is_available():
-    print("CUDA detected, building with CUDA support.")
+    print("CUDA detected; building optional stainx_cuda_torch extension.")
     project_root = Path(__file__).parent
     builder = CUDAExtensionBuilder(project_root)
     extensions = builder.build()
     build_ext = builder.get_build_ext_class()
 else:
-    print("No CUDA detected, building without CUDA support.")
+    print("No CUDA detected; installing Torch-backend-only package (extension skipped).")
     extensions = []
     build_ext = BuildExtension.with_options(use_ninja=os.environ.get("USE_NINJA", "true").lower() == "true")
 
 # Package discovery - use find_packages to automatically discover all packages and subpackages
 packages = find_packages(where="src")
-# Ensure stainx_cuda_torch is included even if it doesn't have __init__.py with Python code
+# Ensure stainx_cuda_torch is included even if discovery misses it
 if "stainx_cuda_torch" not in packages:
     packages.append("stainx_cuda_torch")
-if "stainx_cuda_cupy" not in packages:
-    packages.append("stainx_cuda_cupy")
 
 with open("README.md") as f:
     long_description = f.read()
