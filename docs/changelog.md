@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3] - 2026-07-30
+
+### Changed
+
+- Docs MkDocs theme primary set to logo deep purple `#412B73` (accent `#B166A6`)
+- White drop-shadow on header logo so it separates from the purple title bar
+
 ## [0.1.2] - 2026-07-30
 
 ### Changed
