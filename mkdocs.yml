@@ -12,14 +12,14 @@ theme:
   favicon: assets/StainX-logo.svg
   palette:
     - scheme: default
-      primary: blue
-      accent: blue
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - scheme: slate
-      primary: blue
-      accent: blue
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
@@ -67,6 +67,9 @@ nav:
     - Backends:
       - Backend Overview: api/backends.md
   - Changelog: changelog.md
+
+extra_css:
+  - stylesheets/extra.css
 
 plugins:
   - search

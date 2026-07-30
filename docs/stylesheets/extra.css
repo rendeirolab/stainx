@@ -1,0 +1,14 @@
+/* Custom brand palette — soft pink instead of Material "blue" */
+:root > * {
+  --md-primary-fg-color: #ffc3e0;
+  --md-primary-fg-color--light: #ffe0ef;
+  --md-primary-fg-color--dark: #f59fc8;
+  /* Dark text on light primary surfaces for contrast */
+  --md-primary-bg-color: #1a1a1a;
+  --md-primary-bg-color--light: #1a1a1a;
+
+  --md-accent-fg-color: #ffc3e0;
+  --md-accent-fg-color--transparent: #ffc3e01a;
+  --md-accent-bg-color: #1a1a1a;
+  --md-accent-bg-color--light: #1a1a1a;
+}
