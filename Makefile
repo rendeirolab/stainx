@@ -112,7 +112,7 @@ test:
 # Check code for linting issues
 lint:
 	@echo "Checking code for linting issues..."
-	@find src/stainx_cuda_torch/csrc/ -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -o -name "*.cu" -o -name "*.cuh" | xargs clang-format --dry-run --Werror
+	@find csrc/ src/stainx_cuda_torch/csrc/ \( -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -o -name "*.cu" -o -name "*.cuh" \) | xargs clang-format --dry-run --Werror
 	$(UV) run ruff check .
 
 # Auto-fix linting issues and format code
@@ -120,7 +120,7 @@ fix:
 	@echo "Fixing linting issues and formatting code..."
 	$(UV) run ruff check --fix --unsafe-fixes .
 	$(UV) run ruff format .
-	@find src/stainx_cuda_torch/csrc/ -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -o -name "*.cu" -o -name "*.cuh" | xargs clang-format -i
+	@find csrc/ src/stainx_cuda_torch/csrc/ \( -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -o -name "*.cu" -o -name "*.cuh" \) | xargs clang-format -i
 	@echo "Code formatting and linting fixes complete!"
 
 # Build documentation (matches Read the Docs build process)

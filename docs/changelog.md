@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Macenko pure CUDA cov / analytic 3×3 eigh kernels live under `csrc/macenko.cu` (Torch wrapper includes them; ATen pipeline unchanged)
+
 ## [0.1.1] - 2026-07-30
 
 ### Changed
