@@ -1,14 +1,19 @@
-/* Custom brand palette — soft pink instead of Material "blue" */
+/* Brand palette from StainX-logo.svg — deep purple wordmark */
 :root > * {
-  --md-primary-fg-color: #ffc3e0;
-  --md-primary-fg-color--light: #ffe0ef;
-  --md-primary-fg-color--dark: #f59fc8;
-  /* Dark text on light primary surfaces for contrast */
-  --md-primary-bg-color: #1a1a1a;
-  --md-primary-bg-color--light: #1a1a1a;
+  --md-primary-fg-color: #412b73;
+  --md-primary-fg-color--light: #7d4493;
+  --md-primary-fg-color--dark: #2e1d52;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: #ffffff;
 
-  --md-accent-fg-color: #ffc3e0;
-  --md-accent-fg-color--transparent: #ffc3e01a;
-  --md-accent-bg-color: #1a1a1a;
-  --md-accent-bg-color--light: #1a1a1a;
+  --md-accent-fg-color: #b166a6;
+  --md-accent-fg-color--transparent: #b166a61a;
+  --md-accent-bg-color: #ffffff;
+  --md-accent-bg-color--light: #ffffff;
+}
+
+/* Separate logo from matching deep-purple header */
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 2px rgba(255, 255, 255, 0.85));
 }

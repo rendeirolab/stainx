@@ -15,7 +15,7 @@ def _get_version():
     try:
         return version("stainx")
     except PackageNotFoundError:
-        return "0.1.2"
+        return "0.1.3"
 
 
 __version__ = _get_version()
