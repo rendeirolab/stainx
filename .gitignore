@@ -12,7 +12,6 @@ coverage.xml
 htmlcov/
 .pytest_cache/
 .mypy_cache/
-.ruff_cache/
 .tox/
 .hypothesis/
 .cache/
@@ -27,9 +26,9 @@ uv.lock
 # Benchmark logs
 benchmarks/logs/
 *.log
-src/stainx_cuda/*.so
 
-# Local-only tooling (not part of the package)
-scripts/sentrux_score.py
-
+# Local-only tooling / worktrees
+.sentrux/
+.claude/
 manuscript/
+examples/data/output/
