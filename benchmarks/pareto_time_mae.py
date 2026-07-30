@@ -49,7 +49,7 @@ from stainx.backends.torch_cuda_backend import CUDA_AVAILABLE
 plt.rcParams["svg.fonttype"] = "none"
 
 BATCH, H, W = 128, 256, 256
-WARMUP, RUNS = 3, 10
+WARMUP, RUNS = 30, 100
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "examples" / "data"
 OUT = Path(__file__).resolve().parent / "logs" / "pareto_time_mae.svg"
@@ -420,7 +420,7 @@ def plot(results: list[dict], path: Path, mae_max: float = MAE_MAX) -> None:
         "ps.fonttype": 42,
     })
 
-    fig, axes = plt.subplots(1, 3, figsize=(11.0, 2.5), dpi=350, sharex=False, sharey=False)
+    fig, axes = plt.subplots(1, 3, figsize=(11.0, 3), dpi=500, sharex=False, sharey=False)
     fig.patch.set_facecolor("white")
     x_ticks_all = [MAE_FLOOR, 0.001, 0.01, 0.1, 1, 10, 100, mae_max]
 
