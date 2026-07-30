@@ -8,6 +8,8 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  logo: assets/StainX-logo.svg
+  favicon: assets/StainX-logo.svg
   palette:
     - scheme: default
       primary: blue
