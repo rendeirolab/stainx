@@ -1,7 +1,7 @@
 # StainX
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/rendeirolab/stainx/refs/heads/main/assets/staix-logo-256.png" alt="StainX Logo" width="256"/>
+  <img src="https://raw.githubusercontent.com/rendeirolab/stainx/refs/heads/main/assets/StainX-logo.svg" alt="StainX Logo" width="256"/>
   <br/>
   <a href="https://github.com/rendeirolab/stainx/actions/workflows/ci.yml">
     <img src="https://github.com/rendeirolab/stainx/actions/workflows/ci.yml/badge.svg" alt="CI"/>

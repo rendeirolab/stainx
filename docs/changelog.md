@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.1] - 2026-07-30
+
+### Changed
+
+- Replace package logo with new `StainX-logo.svg` (README, docs, MkDocs theme logo/favicon)
+
 ## [0.1.0] - 2026-07-20
 
 ### Breaking

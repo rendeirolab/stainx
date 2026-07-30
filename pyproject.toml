@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stainx"
-version = "0.1.0"
+version = "0.1.1"
 description = "Torch-first stain normalization for histopathology images with batch processing, training transforms, and optional CUDA kernels."
 readme = "README.md"
 requires-python = ">=3.11"
