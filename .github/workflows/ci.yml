@@ -295,11 +295,15 @@ jobs:
         shell: pwsh
         run: |
           $env:PYTHONWARNINGS = "ignore::RuntimeWarning"
-          uv run python -c "import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)"
-          if ($LASTEXITCODE -eq 0 -and (Get-Command nvcc -ErrorAction SilentlyContinue)) {
+          # Avoid sys.exit(1): pwsh keeps $LASTEXITCODE and Actions treats the step as failed
+          # even after the else branch runs. Print 0/1 instead and exit 0 when skipping.
+          $cudaAvailable = (uv run python -c "import torch; print(int(torch.cuda.is_available()))").Trim() -eq "1"
+          if ($cudaAvailable -and (Get-Command nvcc -ErrorAction SilentlyContinue)) {
             uv run python setup.py build_ext --inplace
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } else {
             Write-Host "CUDA runtime or nvcc not available; continuing with Torch backend only"
+            exit 0
           }
 
       - name: Run tests
