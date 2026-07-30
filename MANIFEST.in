@@ -45,9 +45,9 @@ prune benchmarks
 exclude *.svs
 exclude *.log
 
-# Exclude development documentation
-exclude ARCHITECTURE.md
-exclude DESIGN_PLANS.md
+# Exclude local-only tooling
+prune .sentrux
+prune .claude
 
 # Exclude build tools
 exclude Makefile

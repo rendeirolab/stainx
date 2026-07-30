@@ -129,7 +129,6 @@ class CUDAExtensionBuilder:
 
     def __init__(self, project_root: Path):
         self.project_root = project_root
-        self.csrc_dir = project_root / "src" / "stainx_cuda_torch" / "csrc"
         self.device_info = CUDADeviceInfo()
         self.version_checker = PyTorchVersionChecker()
         self.flags_manager = NVCCFlagsManager()

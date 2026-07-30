@@ -45,7 +45,6 @@ dev = [
     "mkdocs>=1.6.1",
     "mkdocstrings[python]>=0.24.0",
     "mkdocs-material>=9.0.0",
-    "taskipy>=1.14.1",
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "pytest-xdist>=3.0.0",
@@ -111,9 +110,6 @@ markers = [
     "cuda: marks tests that require CUDA",
 ]
 
-[tool.taskipy.tasks]
-test = "uv run --python 3.12 pytest -q"
-
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
 exclude = [
@@ -144,7 +140,6 @@ exclude = [
     "site-packages",
     "venv",
     "benchmarks/logs",
-    "stain-normalization-gpu",  # Separate project directory
 ]
 
 # Increased line length to allow merging of longer expressions
