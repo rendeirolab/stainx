@@ -17,3 +17,10 @@
 .md-header__button.md-logo svg {
   filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 2px rgba(255, 255, 255, 0.85));
 }
+
+/* Pareto plot: fill the content column (no viewport breakout) */
+figure.benchmark-pareto img {
+  width: 100%;
+  height: auto;
+  display: block;
+}

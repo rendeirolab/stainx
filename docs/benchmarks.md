@@ -195,30 +195,22 @@ for device in devices:
     print(f"{device.upper():6s}: {elapsed:6.2f} ms ({throughput:6.2f} img/s)")
 ```
 
-## Historical numbers (RTX A6000)
+## Throughput vs accuracy (RTX A6000)
 
-The figures below were measured on an NVIDIA RTX A6000 during the 0.1.x torch_cuda
-work. They are **not** checked into `benchmarks/logs/` (that directory is gitignored).
-Re-run `benchmark_stainx_backend.py` before treating them as current.
+<figure class="benchmark-pareto" markdown>
+  ![Throughput versus MAE for Macenko, Reinhard, and Histogram Matching](assets/pareto_time_mae.svg)
 
-### Backend Speedup (torch_cuda vs torch)
-
-- **Reinhard**: ~5.6–5.8× faster with torch_cuda
-  - 256×256, batch 32: ~42,300 vs ~7,400 img/s (~5.7×)
-  - 512×512, batch 64: ~11,400 vs ~2,000 img/s (~5.8×)
-- **Macenko**: ~5–9× vs the previous ATen/CPU-offload path (not vs `backend="torch"` on the same night)
-  - Example: 555 → 5177 img/s at 64×150²; 86 → 476 img/s at 32×512²
-  - Default `precision="stable"`; `precision="fast"` trades some MAE for latency
-
-### Batch Size Impact (Reinhard, 256×256, CUDA)
-
-- Batch 1: ~5,500 img/s → Batch 64–128: ~46,500–46,600 img/s
-
-### Method Performance (torch_cuda, batch 32, 256×256) — historical
-
-- **Reinhard**: ~0.76 ms (~42,300 img/s)
-- **HistogramMatching**: ~8.36 ms (~3,800 img/s)
-- **Macenko**: depends on tile size / batch / `precision`
+  <figcaption>
+  Throughput (images/second) versus mean absolute error vs the stable baseline
+  (lower MAE is better) for Macenko, Reinhard, and Histogram Matching.
+  Markers are package–device pairs (circle = CPU, star = GPU).
+  The dashed front traces the best observed throughput at each error level;
+  the dotted line marks the theoretical maximum error (255).
+  Batches of 128 tiles at 256×256 RGB on an NVIDIA RTX A6000
+  (100 timed runs after warm-up; regenerate with
+  <code>benchmarks/pareto_time_mae.py</code>).
+  </figcaption>
+</figure>
 
 ### Recommendations
 
