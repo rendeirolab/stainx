@@ -34,7 +34,7 @@ jobs:
       - name: Install documentation dependencies
         run: |
           source .venv/bin/activate
-          uv pip install mkdocs mkdocstrings[python] mkdocs-material pymdown-extensions
+          uv pip install mkdocs mkdocstrings[python] mkdocs-material mkdocs-jupyter pymdown-extensions
 
       - name: Build documentation
         run: |

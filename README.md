@@ -10,7 +10,7 @@
 
 Torch-first stain normalization for histopathology images with batch processing, training transforms, and optional CUDA kernels.
 
-> **0.1.0 migration:** CuPy backends are removed. Pin `stainx<0.1` to stay on the CuPy stack, or switch to Torch tensors with `backend="torch"` / `"torch_cuda"`.
+> **0.1.x migration (from 0.0.x):** CuPy backends were removed in 0.1.0. Pin `stainx<0.1` to stay on the CuPy stack, or switch to Torch tensors with `backend="torch"` / `"torch_cuda"`. Current release: see `stainx.__version__` / PyPI.
 
 ## Features
 
@@ -24,7 +24,7 @@ Torch-first stain normalization for histopathology images with batch processing,
 
 - Python >= 3.11
 - PyTorch >= 2.0.0
-- CUDA Toolkit + nvcc (optional; builds `stainx_cuda_torch` when available)
+- Optional CUDA extension: CUDA GPU visible to PyTorch at build time **and** `nvcc`
 
 **Supported platforms**
 
@@ -32,14 +32,17 @@ Torch-first stain normalization for histopathology images with batch processing,
 |----------|---------|
 | Linux + CUDA | Primary (Torch + optional CUDA extension) |
 | Linux CPU | Primary (Torch backend) |
-| macOS (MPS / CPU) | Best-effort Torch path (no CUDA extension) |
-| Windows | Best-effort Torch path (CUDA extension not guaranteed) |
+| Windows | Torch path in CI (CUDA extension not guaranteed) |
+| macOS (MPS / CPU) | Best-effort Torch path (no CUDA extension; not in CI) |
 
 ### Install from PyPI
 
 ```bash
 pip install stainx
 ```
+
+PyPI publishes an **sdist**. Torch backends work out of the box; `torch_cuda`
+compiles locally only when the CUDA build gates are met (no prebuilt CUDA wheels).
 
 ### Install from source (recommended: Makefile)
 
@@ -55,17 +58,21 @@ Plain pip also works:
 
 ```bash
 pip install .
-# CUDA extension builds automatically when CUDA/nvcc are present; otherwise Torch-only.
+# Extension builds when torch.cuda.is_available() and nvcc are present; otherwise Torch-only.
+# Prefer make install if you want compile failures to be skipped gracefully.
 ```
 
 ## Quick Start
+
+Use float tensors in `[0, 1]` (or `uint8`). Prefer `torch.rand` — Macenko does not
+accept negative pixels from `torch.randn`.
 
 ```python
 import torch
 from stainx import Reinhard, Macenko, HistogramMatching, StainNormalizerTransform
 
-reference_image = torch.randn(1, 3, 512, 512)
-source_images = torch.randn(10, 3, 512, 512)
+reference_image = torch.rand(1, 3, 512, 512)
+source_images = torch.rand(10, 3, 512, 512)
 
 normalizer = Reinhard(device="cuda")  # or "cpu" / "mps"
 normalizer.fit(reference_image)
@@ -91,7 +98,7 @@ batch_out = transform(source_images)
 
 ## API
 
-- `fit(reference_images)` / `transform(images)` / `fit_transform(images)`
+- `fit(images)` / `transform(images)` / `fit_transform(images)`
 - `StainNormalizerTransform` — `nn.Module` for pipelines
 - Backends: `"torch"` (default) or `"torch_cuda"` when the extension is built
 

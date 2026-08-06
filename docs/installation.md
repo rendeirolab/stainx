@@ -4,22 +4,28 @@
 
 - Python >= 3.11
 - PyTorch >= 2.0.0
-- CUDA Toolkit + nvcc (optional, for the `torch_cuda` extension)
+- Optional CUDA extension (`torch_cuda` / `stainx_cuda_torch`): a CUDA-capable GPU
+  visible to PyTorch at **build** time (`torch.cuda.is_available()`) **and** `nvcc`
+  on `PATH` (or under `CUDA_HOME`)
 
 ## Platform support
 
-| Platform | Support |
-|----------|---------|
-| Linux + CUDA | Primary — Torch + optional CUDA extension |
-| Linux CPU | Primary — Torch backend |
-| macOS (MPS / CPU) | Best-effort Torch path (no CUDA extension) |
-| Windows | Best-effort Torch path (CUDA extension not guaranteed) |
+| Platform | Support | CI coverage |
+|----------|---------|-------------|
+| Linux + CUDA | Primary — Torch + optional CUDA extension | GPU job (Python 3.12) |
+| Linux CPU | Primary — Torch backend | Python 3.11–3.13 |
+| Windows | Torch path (CUDA extension not guaranteed) | Python 3.11–3.12 (CPU) |
+| macOS (MPS / CPU) | Best-effort Torch path (no CUDA extension) | Not in CI |
 
 ## Install from PyPI
 
 ```bash
 pip install stainx
 ```
+
+PyPI ships an **sdist** (source distribution), not prebuilt CUDA wheels. A plain
+`pip install` gives the Torch backends. The `torch_cuda` extension compiles on
+your machine only when the CUDA build gates above are met.
 
 ## Install from source (recommended)
 
@@ -30,7 +36,8 @@ make install          # editable + best-effort CUDA build
 make install-dev      # + test/docs tooling
 ```
 
-The Makefile never fails the install if CUDA/nvcc is missing — you continue with the Torch backend only.
+The Makefile never fails the install if CUDA/`nvcc` is missing — you continue with
+the Torch backend only.
 
 Equivalent pip flow:
 
@@ -38,8 +45,11 @@ Equivalent pip flow:
 pip install .
 # or editable
 pip install -e .
-python setup.py build_ext --inplace  # optional; skipped safely without CUDA
+python setup.py build_ext --inplace  # optional; skipped when CUDA gates fail
 ```
+
+Note: bare `pip install .` can still fail if CUDA gates pass but the compile fails.
+Prefer `make install` for best-effort builds.
 
 ## Verify installation
 
@@ -47,8 +57,8 @@ python setup.py build_ext --inplace  # optional; skipped safely without CUDA
 import torch
 from stainx import Reinhard, StainNormalizerTransform
 
-reference = torch.randn(1, 3, 256, 256)
-images = torch.randn(4, 3, 256, 256)
+reference = torch.rand(1, 3, 256, 256)  # float in [0, 1], NCHW
+images = torch.rand(4, 3, 256, 256)
 
 normalizer = Reinhard(device="cpu")
 normalizer.fit(reference)
@@ -74,4 +84,5 @@ make install-dev
 # or
 uv sync --group dev
 pip install -e .
+python setup.py build_ext --inplace  # optional best-effort CUDA build
 ```

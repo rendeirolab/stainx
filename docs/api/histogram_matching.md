@@ -1,35 +1,14 @@
 # HistogramMatching
 
-```python
-class HistogramMatching(StainNormalizerBase)
-```
+Per-channel histogram matching. Supports NCHW (`channel_axis=1` or `-3`) and
+NHWC (`channel_axis=-1` or `3`). Float inputs are always treated as `[0, 1]`.
 
-## Constructor
-
-```python
-HistogramMatching(
-    device: str | torch.device | None = None,
-    backend: str | None = None,
-    channel_axis: int = 1
-)
-```
-
-**Parameters:**
-- `device`: Device to use. Default: None (auto-detect)
-- `backend`: Backend ("pytorch" or "cuda"). Default: None (auto-select)
-- `channel_axis`: Channel axis. Use `1` for `(N, C, H, W)` or `-1` for `(N, H, W, C)`. Default: 1
-
-## Methods
-
-- `fit(reference_images)` - Compute reference histogram
-- `transform(images)` - Apply histogram matching
-
-## Example
-
-```python
-from stainx import HistogramMatching
-
-normalizer = HistogramMatching(device="cuda", channel_axis=1)
-normalizer.fit(reference)
-normalized = normalizer.transform(images)
-```
+::: stainx.HistogramMatching
+    options:
+      docstring_style: numpy
+      show_root_heading: false
+      members:
+        - __init__
+        - fit
+        - transform
+        - fit_transform
