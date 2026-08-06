@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.4] - 2026-08-06
 
 ### Added
 
@@ -11,7 +11,7 @@
 - Docs alignment: API pages use mkdocstrings; backends documented as `"torch"` / `"torch_cuda"`;
   add `StainNormalizerTransform` API page; install/README state CUDA build gates and PyPI sdist;
   examples/quickstart use `torch.rand`; correctness thresholds and synthetic HE fixtures documented;
-  benchmark numbers labeled historical with harness pointers
+  benchmark page uses Pareto SVG with manuscript-style caption
 
 ## [0.1.3] - 2026-07-30
 
