@@ -1,27 +1,14 @@
 # StainNormalizerBase
 
-```python
-class StainNormalizerBase(ABC)
-```
+Abstract base for all normalizers. Use [`Reinhard`](reinhard.md),
+[`Macenko`](macenko.md), or [`HistogramMatching`](histogram_matching.md).
 
-Base class for all normalizers. Abstract class - use `Reinhard`, `Macenko`, or `HistogramMatching`.
-
-## Constructor
-
-```python
-StainNormalizerBase(device: str | torch.device | None = None)
-```
-
-## Abstract Methods
-
-- `fit(images) -> StainNormalizerBase`
-- `transform(images) -> torch.Tensor`
-
-## Methods
-
-- `fit_transform(images) -> torch.Tensor` - Fit and transform in one step
-
-## Properties
-
-- `device` - Device used for computation
-- `_is_fitted` - Whether normalizer has been fitted
+::: stainx.StainNormalizerBase
+    options:
+      docstring_style: google
+      show_root_heading: false
+      members:
+        - __init__
+        - fit
+        - transform
+        - fit_transform

@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Docs alignment: API pages use mkdocstrings; backends documented as `"torch"` / `"torch_cuda"`;
+  add `StainNormalizerTransform` API page; install/README state CUDA build gates and PyPI sdist;
+  examples/quickstart use `torch.rand`; correctness thresholds and synthetic HE fixtures documented;
+  benchmark numbers labeled historical with harness pointers
+
 ## [0.1.3] - 2026-07-30
 
 ### Changed
@@ -41,8 +50,8 @@
 
 ### Testing
 
-- Correctness suite compares each normalizer × backend (`torch`, `torch_cuda`) to external baselines (torchstain / skimage) with **absolute** `atol` / `MACENKO_ATOL` (plus HE / maxC floors for Macenko)
-- Macenko correctness uses real H&E tiles instead of random noise: noise gives a near-isotropic OD covariance with degenerate leading eigenvectors, so the stain plane (and H/E split) is eigensolver-dependent and parity there is ill-posed
+- Correctness suite compares each normalizer × backend (`torch`, `torch_cuda`) to external baselines (torchstain / skimage) with **absolute** tolerances: Reinhard/HM `atol=1`; Macenko `atol=2` plus HE/maxC `allclose` and MAE ≤ `0.35`
+- Macenko correctness uses **synthetic Beer–Lambert H&E tiles** instead of random RGB noise: noise gives a near-isotropic OD covariance with degenerate leading eigenvectors, so the stain plane (and H/E split) is eigensolver-dependent and parity there is ill-posed
 
 ### Fixed
 
@@ -57,5 +66,4 @@
 - Silent backend selection (no print side-effect on init)
 - `make build` syncs `--group dev` instead of `--all-groups`
 - Pin correctness/benchmark dependency `torchstain==1.4.1`
-- Tighten Macenko vs torchstain relative-error threshold to `0.01`
-- `torch_cuda` Macenko is a fully on-GPU path (custom fp64 covariance reduction + analytic 3×3 symmetric eigendecomposition matching `torch.linalg.eigh` to machine precision + on-device concentration solve) — no per-image CPU round-trip. ~5–9× faster than the previous ATen/CPU-offload path while staying within a grey level of torchstain on H&E tiles (e.g. 555 → 5177 img/s at 64×150², 86 → 476 img/s at 32×512²)
+- `torch_cuda` Macenko is a fully on-GPU path (custom fp64 covariance reduction + analytic 3×3 symmetric eigendecomposition matching `torch.linalg.eigh` to machine precision + on-device concentration solve) — no per-image CPU round-trip. Historical internal timing vs the previous ATen/CPU-offload path was ~5–9× on an RTX A6000 (e.g. 555 → 5177 img/s at 64×150²); regenerate with `benchmarks/benchmark_stainx_backend.py` for current hardware

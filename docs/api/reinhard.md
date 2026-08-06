@@ -1,33 +1,14 @@
 # Reinhard
 
-```python
-class Reinhard(StainNormalizerBase)
-```
+LAB mean/std stain normalization. Layout is **NCHW** (`C=3`) only.
+Float inputs are always treated as `[0, 1]`.
 
-## Constructor
-
-```python
-Reinhard(
-    device: str | torch.device | None = None,
-    backend: str | None = None
-)
-```
-
-**Parameters:**
-- `device`: Device to use. Default: None (auto-detect)
-- `backend`: Backend ("pytorch" or "cuda"). Default: None (auto-select)
-
-## Methods
-
-- `fit(reference_images)` - Compute reference mean/std in LAB color space
-- `transform(images)` - Apply Reinhard normalization
-
-## Example
-
-```python
-from stainx import Reinhard
-
-normalizer = Reinhard(device="cuda")
-normalizer.fit(reference)
-normalized = normalizer.transform(images)
-```
+::: stainx.Reinhard
+    options:
+      docstring_style: numpy
+      show_root_heading: false
+      members:
+        - __init__
+        - fit
+        - transform
+        - fit_transform

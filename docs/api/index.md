@@ -6,6 +6,10 @@
 - [`Reinhard`](reinhard.md)
 - [`Macenko`](macenko.md)
 
+## Training
+
+- [`StainNormalizerTransform`](transform.md)
+
 ## Base Classes
 
 - [`StainNormalizerBase`](base.md)
@@ -18,14 +22,22 @@
 
 All normalizers implement:
 
-- `fit(reference_images)` - Compute normalization parameters
-- `transform(images)` - Apply normalization
-- `fit_transform(images)` - Fit and transform in one step
+- `fit(images)` — Compute normalization parameters
+- `transform(images)` — Apply normalization
+- `fit_transform(images)` — Fit and transform in one step
 
-**Parameters:**
-- `device` (str | torch.device | None): Device (`"cpu"`, `"cuda"`, `"mps"`, or `torch.device`)
-- `backend` (str | None): Backend (`"torch"` or `"torch_cuda"`). Auto-selects if None
+**Constructor parameters (concrete normalizers):**
 
-## Training
+- `device` (`str | torch.device | None`): Device (`"cpu"`, `"cuda"`, `"mps"`, or `torch.device`).
+  Default `None` auto-selects CUDA > MPS > CPU.
+- `backend` (`str | None`): `"torch"` or `"torch_cuda"`. Auto-selects if `None`.
 
-- `StainNormalizerTransform` — `from stainx import StainNormalizerTransform`
+Macenko also accepts `normalize_to_0_1` and `precision`. HistogramMatching also accepts
+`channel_axis`. See the class pages for details.
+
+## Version
+
+```python
+import stainx
+print(stainx.__version__)
+```

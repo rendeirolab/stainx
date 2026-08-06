@@ -62,6 +62,8 @@ nav:
       - HistogramMatching: api/histogram_matching.md
       - Reinhard: api/reinhard.md
       - Macenko: api/macenko.md
+    - Training:
+      - StainNormalizerTransform: api/transform.md
     - Base Classes:
       - StainNormalizerBase: api/base.md
     - Backends:
@@ -78,7 +80,8 @@ plugins:
         python:
           paths: [src]
           options:
-            docstring_style: google
+            docstring_style: auto
             show_source: true
+            merge_init_into_class: true
 
 

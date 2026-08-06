@@ -2,11 +2,14 @@
 
 This page provides practical examples for common use cases with StainX.
 
-For training pipelines see [Training](training.md).
+For training pipelines see [Training](training.md). Use float tensors in
+`[0, 1]` or `uint8` in `[0, 255]`. Prefer `torch.rand` over `torch.randn`
+(Macenko optical-density math does not accept negative pixels).
 
 Repository snippets:
 
-- `examples/torch_transform_example.py`
+- `examples/torch_transform_example.py` — DataLoader + `StainNormalizerTransform`
+- `examples/simple_example.py` — CLI fit/transform demo on real images under `examples/data/`
 
 ## Basic Usage
 
@@ -16,48 +19,44 @@ The simplest workflow: fit on a reference image, then transform source images.
 import torch
 from stainx import Reinhard
 
-# Prepare images
-reference = torch.randn(1, 3, 512, 512)  # Reference/template image
-images = torch.randn(10, 3, 512, 512)    # Images to normalize
+reference = torch.rand(1, 3, 512, 512)  # float [0, 1], NCHW
+images = torch.rand(10, 3, 512, 512)
 
-# Create normalizer and fit
 normalizer = Reinhard(device="cuda")
 normalizer.fit(reference)
-
-# Transform images
 normalized = normalizer.transform(images)
 ```
 
 ## All Normalizers
 
-StainX provides three normalization algorithms:
-
 ```python
 import torch
 from stainx import Reinhard, Macenko, HistogramMatching
 
-reference = torch.randn(1, 3, 512, 512)
-images = torch.randn(10, 3, 512, 512)
+reference = torch.rand(1, 3, 512, 512)
+images = torch.rand(10, 3, 512, 512)
 
-# Reinhard normalization
 reinhard = Reinhard(device="cuda")
 reinhard.fit(reference)
-normalized_reinhard = reinhard.transform(images)
+normalized_reinhard = reinhard.transform(images)  # float stays ~[0, 1]
 
-# Macenko normalization
+# Bare Macenko defaults normalize_to_0_1=False → output ~[0, 255]
 macenko = Macenko(device="cuda")
 macenko.fit(reference)
 normalized_macenko = macenko.transform(images)
 
-# Histogram Matching
+# For float [0, 1] training pipelines prefer StainNormalizerTransform
+# (defaults normalize_to_0_1=True for Macenko) or Macenko(normalize_to_0_1=True)
+
 histogram = HistogramMatching(device="cuda", channel_axis=1)
 histogram.fit(reference)
 normalized_histogram = histogram.transform(images)
 ```
 
-## Fit and Transform in One Step
+Macenko and Reinhard require **NCHW** (`C=3`). Only HistogramMatching supports NHWC
+via `channel_axis=-1` / `3`.
 
-Use `fit_transform()` for convenience:
+## Fit and Transform in One Step
 
 ```python
 normalizer = Reinhard(device="cuda")
@@ -66,46 +65,35 @@ normalized = normalizer.fit_transform(images)  # Fits and transforms in one call
 
 ## Batch Processing
 
-Process multiple images efficiently in a single batch:
-
 ```python
 import torch
 from stainx import Reinhard
 
-# Small batch
-small_batch = torch.randn(8, 3, 512, 512)
-
-# Large batch (more efficient)
-large_batch = torch.randn(128, 3, 512, 512)
+small_batch = torch.rand(8, 3, 512, 512)
+large_batch = torch.rand(128, 3, 512, 512)
 
 normalizer = Reinhard(device="cuda")
-normalizer.fit(torch.randn(1, 3, 512, 512))
-
-# Process entire batch at once
+normalizer.fit(torch.rand(1, 3, 512, 512))
 normalized = normalizer.transform(large_batch)
 print(f"Processed {large_batch.shape[0]} images")
 ```
 
-## Channels-Last Format
-
-Support for channels-last format (useful when working with certain image loaders):
+## Channels-Last Format (HistogramMatching only)
 
 ```python
 import torch
 from stainx import HistogramMatching
 
-# Images in (N, H, W, C) format
-images = torch.randn(10, 512, 512, 3)
+images = torch.rand(10, 512, 512, 3)  # (N, H, W, C)
 
-# Use channel_axis=-1 for channels-last
 normalizer = HistogramMatching(device="cuda", channel_axis=-1)
-normalizer.fit(images[:1])  # Fit on first image
+normalizer.fit(images[:1])
 normalized = normalizer.transform(images)
 ```
 
-## Working with Real Images
+Passing NHWC into Macenko or Reinhard raises.
 
-Example of loading and processing real images:
+## Working with Real Images
 
 ```python
 import torch
@@ -113,54 +101,47 @@ from PIL import Image
 import torchvision.transforms as transforms
 from stainx import Reinhard
 
-# Load reference image
 reference_img = Image.open("reference.png")
 reference_tensor = transforms.ToTensor()(reference_img).unsqueeze(0)  # (1, 3, H, W)
 
-# Load source images
 source_images = []
 for path in ["img1.png", "img2.png", "img3.png"]:
     img = Image.open(path)
-    tensor = transforms.ToTensor()(img)
-    source_images.append(tensor)
+    source_images.append(transforms.ToTensor()(img))
 
-# Stack into batch
 source_batch = torch.stack(source_images)  # (3, 3, H, W)
 
-# Normalize
 normalizer = Reinhard(device="cuda")
 normalizer.fit(reference_tensor)
 normalized_batch = normalizer.transform(source_batch)
 
-# Convert back to images if needed
 for i, normalized in enumerate(normalized_batch):
-    img = transforms.ToPILImage()(normalized)
-    img.save(f"normalized_{i}.png")
+    transforms.ToPILImage()(normalized).save(f"normalized_{i}.png")
 ```
+
+Or run `python examples/simple_example.py reinhard` with images under `examples/data/`.
 
 ## Device Selection
 
-Examples for different devices:
+Bare normalizers: `device=None` auto-picks CUDA > MPS > CPU.
+`StainNormalizerTransform(device=None)` keeps each batch on its **input** device.
 
 ```python
 import torch
 from stainx import Reinhard
 
-reference = torch.randn(1, 3, 512, 512)
-images = torch.randn(10, 3, 512, 512)
+reference = torch.rand(1, 3, 512, 512)
+images = torch.rand(10, 3, 512, 512)
 
-# CPU
 normalizer_cpu = Reinhard(device="cpu")
 normalizer_cpu.fit(reference)
 normalized_cpu = normalizer_cpu.transform(images)
 
-# CUDA (NVIDIA GPU)
 if torch.cuda.is_available():
     normalizer_cuda = Reinhard(device="cuda")
     normalizer_cuda.fit(reference.to("cuda"))
     normalized_cuda = normalizer_cuda.transform(images.to("cuda"))
 
-# MPS (Apple Silicon)
 if torch.backends.mps.is_available():
     normalizer_mps = Reinhard(device="mps")
     normalizer_mps.fit(reference.to("mps"))
@@ -169,20 +150,18 @@ if torch.backends.mps.is_available():
 
 ## Backend Selection
 
-Force a specific backend:
+Valid ids: `"torch"` and `"torch_cuda"` only.
 
 ```python
 from stainx import Reinhard
 
-reference = torch.randn(1, 3, 512, 512, device="cuda")
-images = torch.randn(10, 3, 512, 512, device="cuda")
+reference = torch.rand(1, 3, 512, 512, device="cuda")
+images = torch.rand(10, 3, 512, 512, device="cuda")
 
-# Use optimized CUDA backends (if available)
 normalizer_torch_cuda = Reinhard(device="cuda", backend="torch_cuda")
 normalizer_torch_cuda.fit(reference)
 normalized_torch_cuda = normalizer_torch_cuda.transform(images)
 
-# Force torch backend (works everywhere)
 normalizer_torch = Reinhard(device="cuda", backend="torch")
 normalizer_torch.fit(reference)
 normalized_torch = normalizer_torch.transform(images)
@@ -190,45 +169,48 @@ normalized_torch = normalizer_torch.transform(images)
 
 ## Processing Different Image Sizes
 
-Handle images of different sizes in a batch:
+Images in one batch must share `H×W`. Process different sizes separately (or resize first).
 
 ```python
 import torch
 from stainx import Reinhard
 
-# Images must be the same size in a batch
-# If you have different sizes, process them separately or resize first
-
-reference = torch.randn(1, 3, 512, 512)
-small_images = torch.randn(5, 3, 256, 256)
-large_images = torch.randn(5, 3, 1024, 1024)
+reference = torch.rand(1, 3, 512, 512)
+small_images = torch.rand(5, 3, 256, 256)
+large_images = torch.rand(5, 3, 1024, 1024)
 
 normalizer = Reinhard(device="cuda")
-
-# Process small images
 normalizer.fit(reference)
 normalized_small = normalizer.transform(small_images)
-
-# Process large images
 normalized_large = normalizer.transform(large_images)
 ```
 
-## Preserving Data Types
+## Data types and value range
 
-StainX preserves input data types:
+Reinhard and HistogramMatching preserve input dtype (uint8 stays uint8; float stays float in `[0, 1]`).
+
+Bare `Macenko` defaults `normalize_to_0_1=False`, so float/`uint8` outputs are ~`[0, 255]`.
+`StainNormalizerTransform(method="macenko")` defaults `normalize_to_0_1=True` (float `[0, 1]`).
 
 ```python
 import torch
-from stainx import Reinhard
+from stainx import Reinhard, Macenko
 
-# uint8 input
 reference_uint8 = (torch.rand(1, 3, 512, 512) * 255).round().to(torch.uint8)
 images_uint8 = (torch.rand(10, 3, 512, 512) * 255).round().to(torch.uint8)
 
-normalizer = Reinhard(device="cuda")
-normalizer.fit(reference_uint8)
-normalized = normalizer.transform(images_uint8)
+reinhard = Reinhard(device="cuda")
+reinhard.fit(reference_uint8)
+out_r = reinhard.transform(images_uint8)
+print(out_r.dtype)  # torch.uint8
 
-print(f"Input dtype: {images_uint8.dtype}")
-print(f"Output dtype: {normalized.dtype}")  # Should match input
+macenko = Macenko(device="cuda")  # normalize_to_0_1=False
+macenko.fit(reference_uint8)
+out_m = macenko.transform(images_uint8)
+print(out_m.dtype, float(out_m.amax()))  # uint8-ish / ~255 range
+
+macenko_01 = Macenko(device="cuda", normalize_to_0_1=True)
+macenko_01.fit(reference_uint8)
+out_01 = macenko_01.transform(images_uint8)
+print(out_01.dtype, float(out_01.amax()))  # float, <= 1
 ```

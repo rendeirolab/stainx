@@ -11,50 +11,50 @@
 
 ## Overview
 
-**StainX** is an enhanced stain normalization library for histopathology images that provides significant performance improvements through optimized batch processing. Unlike other frameworks that process images individually, StainX is designed from the ground up to handle batches of images efficiently, resulting in better GPU utilization and faster processing times.
+**StainX** is a Torch-first stain normalization library for histopathology images,
+designed for efficient **batch** processing on CPU, CUDA, and MPS, with an optional
+compiled `torch_cuda` extension.
 
 ### Key Advantages
 
-- **Batch Processing**: Process multiple images simultaneously, maximizing GPU throughput and reducing overhead
-- **Multi-Device Support**: Seamlessly works on CPU, CUDA (NVIDIA GPUs), and MPS (Apple Silicon)
-- **Multiple Algorithms**: Supports Histogram Matching, Reinhard, and Macenko normalization methods
-- **Automatic Backend Selection**: Intelligently chooses between optimized CUDA kernels and PyTorch backends
+- **Batch Processing**: Process multiple images simultaneously, maximizing GPU throughput
+- **Multi-Device Support**: CPU, CUDA (NVIDIA), and MPS (Apple Silicon)
+- **Multiple Algorithms**: Histogram Matching, Reinhard, and Macenko
+- **Automatic Backend Selection**: Chooses between PyTorch ops and compiled CUDA kernels when available
 
 ### Why Batch Processing Matters
 
-Batch processing is crucial for histopathology workflows where you often need to normalize hundreds or thousands of images. By processing images in batches:
+Batch processing is crucial for histopathology workflows where you often need to normalize
+hundreds or thousands of images:
 
-- **Better GPU Utilization**: Parallel processing across the entire batch maximizes GPU compute resources
-- **Reduced Overhead**: Single kernel launches for entire batches instead of per-image launches
-- **Faster Processing**: Up to 5-7x speedup with CUDA backend compared to PyTorch backend for batch processing
-- **Memory Efficiency**: Optimized memory access patterns for batched operations
-- **Higher Throughput**: Batch processing achieves 40,000+ images/second (vs ~5,500 for single images)
+- **Better GPU Utilization**: Parallel processing across the batch
+- **Reduced Overhead**: Fewer kernel launches than per-image loops
+- **Higher Throughput**: Batch sizes of 64–128 typically outperform single-image transforms
+  (see [Benchmarks](benchmarks.md); regenerate numbers on your hardware)
 
 ## Quick Example
+
+Use float tensors in `[0, 1]` (or `uint8`). Prefer `torch.rand` — Macenko does not
+accept negative pixels from `torch.randn`.
 
 ```python
 import torch
 from stainx import Reinhard, Macenko, HistogramMatching
 
-# Load your images as torch.Tensor (N, C, H, W) or (N, H, W, C)
-reference_image = torch.randn(1, 3, 512, 512)  # Reference image
-source_images = torch.randn(10, 3, 512, 512)    # Batch of images to normalize
+reference_image = torch.rand(1, 3, 512, 512)  # NCHW, float [0, 1]
+source_images = torch.rand(10, 3, 512, 512)
 
-# Reinhard normalization
 normalizer = Reinhard(device="cuda")  # or "cpu", "mps"
 normalizer.fit(reference_image)
-normalized = normalizer.transform(source_images)  # Process entire batch at once
+normalized = normalizer.transform(source_images)
 ```
 
 ## Performance
 
-StainX provides significant performance improvements, especially when processing batches of images. Based on benchmarks on NVIDIA RTX A6000:
-
-- **CUDA Backend Speedup**: ~5.7× for Reinhard; Macenko `torch_cuda` is ~5–9× vs the previous ATen/CPU-offload path (custom on-GPU kernel)
-- **Batch Processing Throughput**: Up to 46,600 images/second (vs ~5,500 for single images)
-- **Optimal Batch Size**: 64-128 images provides best performance
-
-See the [Benchmarks](benchmarks.md) page for detailed performance benchmarks and code examples.
+On an NVIDIA RTX A6000 during 0.1.x development, `torch_cuda` Reinhard was about
+**~5.7×** the pure Torch backend at mid batch sizes, with throughput climbing into
+the tens of thousands of images/second for 256² tiles. Those figures are historical —
+re-run `benchmarks/benchmark_stainx_backend.py` and see [Benchmarks](benchmarks.md).
 
 ## Installation
 
@@ -63,11 +63,13 @@ pip install stainx
 # from source: make install
 ```
 
-CUDA extensions build automatically when CUDA/nvcc are available. Requires PyTorch >= 2.0.0 (Torch-only; CuPy is not used).
+Requires Python >= 3.11 and PyTorch >= 2.0.0. PyPI ships an **sdist** (Torch backends
+out of the box). The optional `torch_cuda` extension compiles locally when a CUDA GPU
+is visible to PyTorch **and** `nvcc` is available. See [Installation](installation.md).
 
 ## Features
 
-- **Multiple algorithms**: Histogram Matching, Reinhard, and Macenko normalization
+- **Multiple algorithms**: Histogram Matching, Reinhard, and Macenko
 - **Torch backends**: `torch` and optional `torch_cuda`
 - **Training transforms**: `StainNormalizerTransform` for DataLoader pipelines
 - **Batch processing**: Efficient multi-image normalization
@@ -75,12 +77,14 @@ CUDA extensions build automatically when CUDA/nvcc are available. Requires PyTor
 
 ## Documentation
 
-- [Quick Start Guide](quickstart.md) - Get started in minutes
-- [Installation Guide](installation.md) - Detailed installation instructions
-- [Training](training.md) - DataLoader / training pipelines
-- [Examples](examples.md) - Usage examples and patterns
-- [Benchmarks](benchmarks.md) - Performance benchmarks and comparisons
-- [API Reference](api/index.md) - Complete API documentation
+- [Installation Guide](installation.md)
+- [Quick Start Guide](quickstart.md)
+- [Training](training.md)
+- [Examples](examples.md)
+- [Benchmarks](benchmarks.md)
+- [Correctness Report](correctness_report.md)
+- [API Reference](api/index.md)
+- [Changelog](changelog.md)
 
 ## Contributing
 

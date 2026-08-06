@@ -1,33 +1,19 @@
 # Macenko
 
-```python
-class Macenko(StainNormalizerBase)
-```
+Macenko stain-matrix normalization. Low-level `normalize_to_0_1` defaults to
+`False` (output ~`[0, 255]`). Prefer
+[`StainNormalizerTransform`](transform.md) for training pipelines — that path
+defaults Macenko to `[0, 1]`.
 
-## Constructor
+`precision="fast"` requires `backend="torch_cuda"`. Layout is **NCHW** (`C=3`) only.
+Float inputs are always treated as `[0, 1]` (no `max()>1` heuristic).
 
-```python
-Macenko(
-    device: str | torch.device | None = None,
-    backend: str | None = None
-)
-```
-
-**Parameters:**
-- `device`: Device to use. Default: None (auto-detect)
-- `backend`: Backend ("pytorch" or "cuda"). Default: None (auto-select)
-
-## Methods
-
-- `fit(reference_images)` - Compute stain matrix and target max concentration
-- `transform(images)` - Apply Macenko normalization
-
-## Example
-
-```python
-from stainx import Macenko
-
-normalizer = Macenko(device="cuda")
-normalizer.fit(reference)
-normalized = normalizer.transform(images)
-```
+::: stainx.Macenko
+    options:
+      docstring_style: numpy
+      show_root_heading: false
+      members:
+        - __init__
+        - fit
+        - transform
+        - fit_transform
