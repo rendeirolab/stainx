@@ -133,7 +133,8 @@ class TestStainNormalizerTransform:
         t = StainNormalizerTransform(method="macenko", mode="reference", reference=ref, device="cpu")
         n = Macenko(device="cpu", normalize_to_0_1=True)
         n.fit(ref)
-        assert torch.allclose(t(src), n.transform(src), rtol=0, atol=1e-5)
+        # Independent fits + platform BLAS (esp. Windows) can differ by ~1e-5..1e-4
+        assert torch.allclose(t(src), n.transform(src), rtol=0, atol=1e-4)
 
     def test_prebuilt_normalize_flag_can_clear(self, reference):
         n = Macenko(device="cpu", normalize_to_0_1=True)
