@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Examples notebook (`examples/visualize_normalization.ipynb`) rendered in docs via mkdocs-jupyter (nav: Notebook)
+
 ### Changed
 
 - Docs alignment: API pages use mkdocstrings; backends documented as `"torch"` / `"torch_cuda"`;

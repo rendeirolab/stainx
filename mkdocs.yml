@@ -53,7 +53,7 @@ nav:
   - Installation: installation.md
   - Quick Start: quickstart.md
   - Training: training.md
-  - Examples: examples.md
+  - Notebook: examples/visualize_normalization.ipynb
   - Benchmarks: benchmarks.md
   - Correctness Report: correctness_report.md
   - API Reference:
@@ -75,6 +75,9 @@ extra_css:
 
 plugins:
   - search
+  - mkdocs-jupyter:
+      include_source: true
+      execute: false
   - mkdocstrings:
       handlers:
         python:

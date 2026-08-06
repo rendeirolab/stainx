@@ -80,7 +80,7 @@ is visible to PyTorch **and** `nvcc` is available. See [Installation](installati
 - [Installation Guide](installation.md)
 - [Quick Start Guide](quickstart.md)
 - [Training](training.md)
-- [Examples](examples.md)
+- [Notebook](examples/visualize_normalization.ipynb) — Visual before/after stain normalization
 - [Benchmarks](benchmarks.md)
 - [Correctness Report](correctness_report.md)
 - [API Reference](api/index.md)
