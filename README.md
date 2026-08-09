@@ -3,8 +3,10 @@
 <h1>StainX</h1>
 <img src="https://raw.githubusercontent.com/rendeirolab/stainx/refs/heads/main/assets/StainX-logo.svg" alt="StainX Logo" width="256"/>
 
-![CI](https://github.com/rendeirolab/stainx/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/rendeirolab/stainx/actions/workflows/ci.yml/badge.svg)](https://github.com/rendeirolab/stainx/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+[![bioRxiv](https://img.shields.io/badge/bioRxiv-10.64898/2026.08.06.743198-b31b1b)](https://www.biorxiv.org/content/10.64898/2026.08.06.743198v1)
+[![DOI](https://img.shields.io/badge/DOI-10.64898/2026.08.06.743198-blue)](https://doi.org/10.64898/2026.08.06.743198)
 </div>
 
 
@@ -105,6 +107,13 @@ batch_out = transform(source_images)
 ## Documentation
 
 See the [documentation site](https://stainx.readthedocs.io/) for installation details, training usage, and examples.
+
+## Citation
+
+If you use StainX, please cite the preprint:
+
+> https://www.biorxiv.org/content/10.64898/2026.08.06.743198v1  
+> DOI: [10.64898/2026.08.06.743198](https://doi.org/10.64898/2026.08.06.743198)
 
 ## License
 

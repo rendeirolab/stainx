@@ -7,6 +7,12 @@
     <img src="https://github.com/rendeirolab/stainx/actions/workflows/ci.yml/badge.svg" alt="CI"/>
   </a>
   <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python"/>
+  <a href="https://www.biorxiv.org/content/10.64898/2026.08.06.743198v1">
+    <img src="https://img.shields.io/badge/bioRxiv-10.64898/2026.08.06.743198-b31b1b" alt="bioRxiv"/>
+  </a>
+  <a href="https://doi.org/10.64898/2026.08.06.743198">
+    <img src="https://img.shields.io/badge/DOI-10.64898/2026.08.06.743198-blue" alt="DOI"/>
+  </a>
 </p>
 
 ## Overview
