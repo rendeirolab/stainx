@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.5] - 2026-08-09
+
+### Added
+
+- LazySlide + StainX tutorial notebook (`examples/lazyslide_stainx_normalization_tutorial.ipynb`) under Notebook nav (pre-executed outputs)
+
 ## [0.1.4] - 2026-08-06
 
 ### Added
