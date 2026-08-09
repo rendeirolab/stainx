@@ -81,6 +81,7 @@ is visible to PyTorch **and** `nvcc` is available. See [Installation](installati
 - [Quick Start Guide](quickstart.md)
 - [Training](training.md)
 - [Notebook](examples/visualize_normalization.ipynb) — Visual before/after stain normalization
+- [LazySlide + StainX](examples/lazyslide_stainx_normalization_tutorial.ipynb) — Stain normalization in a LazySlide WSI pipeline
 - [Benchmarks](benchmarks.md)
 - [Correctness Report](correctness_report.md)
 - [API Reference](api/index.md)

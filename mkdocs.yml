@@ -53,7 +53,9 @@ nav:
   - Installation: installation.md
   - Quick Start: quickstart.md
   - Training: training.md
-  - Notebook: examples/visualize_normalization.ipynb
+  - Notebook:
+    - Visualize normalization: examples/visualize_normalization.ipynb
+    - LazySlide + StainX: examples/lazyslide_stainx_normalization_tutorial.ipynb
   - Benchmarks: benchmarks.md
   - Correctness Report: correctness_report.md
   - API Reference:
